@@ -31,6 +31,12 @@ if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
 }
 
+// Release signing needs key.properties + the .jks next to it. When either is missing
+// (fresh clone, CI secret not provided) fall back to the debug key instead of failing
+// the build with "Keystore file not set for signing config release".
+def releaseStoreFile = keystoreProperties['storeFile'] ? file(keystoreProperties['storeFile']) : null
+def hasReleaseKeystore = releaseStoreFile != null && releaseStoreFile.exists()
+
 android {
     namespace "com.qanis.app"
     compileSdk flutter.compileSdkVersion
@@ -64,21 +70,21 @@ android {
         release {
             keyAlias keystoreProperties['keyAlias']
             keyPassword keystoreProperties['keyPassword']
-            storeFile keystoreProperties['storeFile'] ? file(keystoreProperties['storeFile']) : null
+            storeFile releaseStoreFile
             storePassword keystoreProperties['storePassword']
         }
     }
 
     buildTypes {
         release {
-            signingConfig signingConfigs.release
+            signingConfig hasReleaseKeystore ? signingConfigs.release : signingConfigs.debug
             // Left off so the first CI build is deterministic; turn on once the
             // plugin/reflection surface has been smoke-tested.
             minifyEnabled false
             shrinkResources false
         }
         debug {
-            signingConfig signingConfigs.release
+            signingConfig hasReleaseKeystore ? signingConfigs.release : signingConfigs.debug
         }
     }
 }
