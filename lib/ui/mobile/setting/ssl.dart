@@ -96,33 +96,28 @@ class _MobileSslState extends State<MobileSslWidget> {
 
   /// Green = system store (root), amber = user store, red = not installed.
   Widget caStatusBanner() {
-    final isCN = localizations.localeName == 'zh';
     Color color;
     IconData icon;
     String title;
     String subtitle;
     switch (_caState) {
       case CaInstallState.system:
-        color = const Color(0xFF6FCF97);
+        color = DarkPalette.ok;
         icon = Icons.verified_user_outlined;
-        title = isCN ? 'الشهادة مثبّتة في النظام (روت)' : 'Certificate installed as system CA (root)';
-        subtitle = isCN
-            ? 'كل التطبيقات تثق بها — فك تشفير HTTPS يعمل بالكامل'
-            : 'Every app trusts it — HTTPS decryption works everywhere';
+        title = 'Certificate installed as system CA (root)';
+        subtitle = 'Every app trusts it — HTTPS decryption works everywhere';
         break;
       case CaInstallState.user:
-        color = const Color(0xFFE8A33D);
+        color = DarkPalette.warn;
         icon = Icons.warning_amber_rounded;
-        title = isCN ? 'الشهادة مثبّتة كمستخدم' : 'Certificate installed as user CA';
-        subtitle = isCN
-            ? 'أغلب التطبيقات تتجاهلها — استخدم تثبيت النظام (روت) أو موديول Magisk'
-            : 'Most apps ignore user CAs — use the root install or the Magisk module';
+        title = 'Certificate installed as user CA';
+        subtitle = 'Most apps ignore user CAs — use the system (root) install instead';
         break;
       default:
-        color = const Color(0xFFEB5757);
+        color = DarkPalette.err;
         icon = Icons.error_outline;
-        title = isCN ? 'الشهادة غير مثبّتة' : 'Certificate not installed';
-        subtitle = isCN ? 'اضغط "تثبيت الشهادة الجذرية" للبدء' : 'Tap "Install Root CA" to proceed';
+        title = 'Certificate not installed';
+        subtitle = 'Tap "Install Root CA" to proceed';
     }
 
     return Card(
@@ -152,7 +147,7 @@ class _MobileSslState extends State<MobileSslWidget> {
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(title, style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600, color: color)),
                 const SizedBox(height: 4),
-                Text(subtitle, style: const TextStyle(fontSize: 12.5, color: Color(0xFFA6A6A6))),
+                Text(subtitle, style: const TextStyle(fontSize: 12.5, color: DarkPalette.text2)),
               ]),
             ),
           ]),
@@ -220,7 +215,7 @@ class _MobileSslState extends State<MobileSslWidget> {
                   });
                 }),
             Divider(height: 0, thickness: 0.3, color: dividerColor),
-            // 客户端证书 (mTLS)
+            // Client certificate (mTLS)
             ListTile(
                 title: Text(localizations.clientCertificate),
                 trailing: const Icon(Icons.keyboard_arrow_right),
@@ -424,82 +419,81 @@ class _AndroidCaInstallState extends State<AndroidCaInstall> with SingleTickerPr
         body: TabBarView(controller: _tabController, children: [rootCA(), userCA()]));
   }
 
+  Widget _stepTitle(String text) => Padding(
+      padding: const EdgeInsets.only(top: 16, bottom: 6),
+      child: Text(text, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5)));
+
+  Widget _body(String text) =>
+      Text(text, style: const TextStyle(color: DarkPalette.text2, fontSize: 12.5, height: 1.35));
+
+  Widget _codeLine(String text) => Padding(
+      padding: const EdgeInsets.only(left: 8, bottom: 4),
+      child: SelectableText(text,
+          style: const TextStyle(fontFamily: 'monospace', fontSize: 12, color: DarkPalette.text2)));
+
+  /// System-store install, explained end to end with no external links or modules.
   ListView rootCA() {
-    bool isCN = localizations.localeName == 'zh';
     return ListView(padding: const EdgeInsets.all(10), children: [
-      Text(localizations.androidRootMagisk),
-      TextButton(
-          child: Text("https://${isCN ? 'gitee' : 'github'}.com/wanghongenpin/Magisk-ProxyPinCA/releases"),
-          onPressed: () {
-            launchUrl(Uri.parse("https://${isCN ? 'gitee' : 'github'}.com/wanghongenpin/Magisk-ProxyPinCA/releases"));
-          }),
-      const SizedBox(height: 15),
+      _body('Install the QANIS CA into the Android system trust store. Every step runs on this device — '
+          'the app exports the certificate and you (or the auto-install button) place it in the store.'),
+      _stepTitle('1. Export the CA as "<hash>.0"'),
       futureWidget(
           CertificateManager.systemCertificateName(),
           (name) => SelectableText(localizations.androidRootRename(name),
               style: const TextStyle(fontWeight: FontWeight.w500))),
+      const SizedBox(height: 4),
+      _body('Android only trusts a system CA whose file name is the certificate subject hash with a .0 '
+          'suffix, so keep exactly this name when you copy the file.'),
       const SizedBox(height: 10),
       FilledButton(
           onPressed: () async => _downloadCert(await CertificateManager.systemCertificateName()),
           child: Text(localizations.androidRootCADownload)),
-      const SizedBox(height: 10),
+      _stepTitle('2. Copy it into /system/etc/security/cacerts'),
+      _body('The export above lands in /sdcard/Download/qanis. Move it to /data/local/tmp, then copy it into '
+          'the system store as <hash>.0 with mode 644 and owner root:root:'),
+      const SizedBox(height: 6),
+      _codeLine('cp /sdcard/Download/qanis/<hash>.0 /data/local/tmp/'),
+      _codeLine('su -c "mount -o rw,remount /system"'),
+      _codeLine('su -c "cp /data/local/tmp/<hash>.0 /system/etc/security/cacerts/<hash>.0"'),
+      _codeLine('su -c "chmod 644 /system/etc/security/cacerts/<hash>.0"'),
+      _codeLine('su -c "chown root:root /system/etc/security/cacerts/<hash>.0"'),
+      _codeLine('su -c "restorecon /system/etc/security/cacerts/<hash>.0"'),
+      _stepTitle('3. Android 14 and later: also install into the Conscrypt APEX'),
       Text(
-        isCN ? "自动安装（需Root和system写权限，重启生效）" : "Auto install (Root & /system write, reboot required)",
-        style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
-      ),
+          "Android 14+ reads system CAs from '/apex/com.android.conscrypt/cacerts', which is mounted read-only. Place the same '<hash>.0' file there with mode 644 and owner root:root, either by remounting the directory read-write, or by copying the whole store to a tmpfs directory, adding the file, and bind-mounting that copy over the original."
+              .fixAutoLines(),
+          style: const TextStyle(color: DarkPalette.text2, fontSize: 12.5, height: 1.35)),
+      _stepTitle('4. Reboot'),
+      _body('Reboot the device so the trust store is reloaded, then come back to this screen: the banner turns '
+          'green once the CA is trusted system-wide.'),
+      _stepTitle('Or let the app do it'),
+      const Text('Auto install (root and /system write access, reboot required)',
+          style: TextStyle(color: DarkPalette.warn, fontWeight: FontWeight.bold, fontSize: 12.5)),
+      const SizedBox(height: 4),
+      _body('The button below runs the same steps through su on this device: it writes <hash>.0 into '
+          '/system/etc/security/cacerts and, on Android 14+, into /apex/com.android.conscrypt/cacerts.'),
+      const SizedBox(height: 8),
       FilledButton(
         onPressed: _autoInstallCert,
-        child: Text(isCN ? "一键自动安装到系统" : "Auto install to system"),
+        child: const Text('Auto install to system'),
       ),
-      const SizedBox(height: 10),
-      Text(
-          "Android 13: ${isCN ? "将证书挂载到" : "Mount the certificate to"} '/system/etc/security/cacerts' ${isCN ? "目录" : "Directory"}"
-              .fixAutoLines()),
-      const SizedBox(height: 5),
-      Text(
-          "Android 14: ${isCN ? "将证书挂载到" : "Mount the certificate to"} '/apex/com.android.conscrypt/cacerts' ${isCN ? "目录" : "Directory"}"
-              .fixAutoLines()),
-      const SizedBox(height: 5),
-      ClipRRect(
-          child: Align(
-              alignment: Alignment.topCenter,
-              child: Image.network(
-                scale: 0.5,
-                "https://foruda.gitee.com/images/1710181660282752846/cb520c0b_1073801.png",
-                height: 460,
-              )))
+      const SizedBox(height: 16),
     ]);
   }
 
   ListView userCA() {
-    bool isCN = localizations.localeName == 'zh';
-
     return ListView(padding: const EdgeInsets.all(10), children: [
       Text(localizations.androidUserCATips, style: const TextStyle(fontWeight: FontWeight.w500)),
       const SizedBox(height: 5),
-      TextButton(
-        style: const ButtonStyle(alignment: Alignment.centerLeft),
-        onPressed: () {},
-        child: Text("1. ${localizations.downloadRootCa} ", textAlign: TextAlign.left),
-      ),
+      _stepTitle('1. ${localizations.downloadRootCa}'),
       FilledButton(onPressed: () => _downloadCert('QANISCA.crt'), child: Text(localizations.downloadRootCa)),
-      const SizedBox(height: 5),
-      TextButton(onPressed: () {}, child: Text("2. ${localizations.androidUserCAInstall}")),
-      TextButton(
-          onPressed: () {
-            launchUrl(Uri.parse(isCN
-                ? "https://gitee.com/wanghongenpin/proxypin/wikis/%E5%AE%89%E5%8D%93%E6%97%A0ROOT%E4%BD%BF%E7%94%A8Xposed%E6%A8%A1%E5%9D%97%E6%8A%93%E5%8C%85"
-                : "https://github.com/wanghongenpin/proxypin/wiki/Android-without-ROOT-uses-Xposed-module-to-capture-packets"));
-          },
-          child: Text(localizations.androidUserXposed)),
-      ClipRRect(
-          child: Align(
-              alignment: Alignment.topCenter,
-              heightFactor: .7,
-              child: Image.network(
-                "https://foruda.gitee.com/images/1689352695624941051/74e3bed6_1073801.png",
-                height: 680,
-              )))
+      _stepTitle('2. ${localizations.androidUserCAInstall}'),
+      _body('Open Settings > Security > Encryption & credentials > Install a certificate > CA certificate, '
+          'choose "Install anyway", then pick QANISCA.crt from /sdcard/Download/qanis.'),
+      const SizedBox(height: 10),
+      _body('A user CA is only honoured by apps that opt in: browsers trust it, most banking and social apps '
+          'do not. For full HTTPS capture, install the CA into the system store from the first tab instead.'),
+      const SizedBox(height: 16),
     ]);
   }
 
@@ -530,7 +524,6 @@ class _AndroidCaInstallState extends State<AndroidCaInstall> with SingleTickerPr
   /// into /apex/com.android.conscrypt/cacerts. The apex mount is read-only, so when a
   /// direct copy fails a tmpfs copy of the store is bind-mounted over it and merged.
   Future<void> _autoInstallCert() async {
-    bool isCN = localizations.localeName == 'zh';
     try {
       final caFile = await CertificateManager.certificateFile();
       final hash = await CertificateManager.systemCertificateName();
@@ -582,16 +575,14 @@ echo done
       final installed = output.contains('installed:') || output.contains('overlay:');
       if (!installed) {
         FlutterToastr.show(
-            !isCN
-                ? 'Certificate install failed. Check root and /system write permission, or use the Magisk module.\n$output'
-                : 'فشل تثبيت الشهادة. تحقق من صلاحية root وكتابة /system أو استخدم موديول Magisk.\n$output',
+            'Certificate install failed. Check root and /system write permission, then retry.\n$output',
             context,
             rootNavigator: true,
             duration: 8);
         return;
       }
       FlutterToastr.show(
-        !isCN ? 'Certificate installed, reboot required' : 'تم تثبيت الشهادة، أعد التشغيل',
+        'Certificate installed, reboot required',
         context,
         rootNavigator: true,
         duration: 5,
@@ -599,9 +590,7 @@ echo done
     } catch (e) {
       logger.d('auto install cert error: $e');
       FlutterToastr.show(
-          !isCN
-              ? 'Auto install failed: $e. Check root and /system write permission, or use the Magisk module.'
-              : 'فشل التثبيت التلقائي: $e. تحقق من root وكتابة /system أو استخدم موديول Magisk.',
+          'Auto install failed: $e. Check root and /system write permission, then retry.',
           context,
           rootNavigator: true,
           duration: 6);
@@ -615,7 +604,7 @@ echo done
         return result.stdout.toString().trim().split(".")[0];
       }
     } catch (e) {
-      logger.d('获取Android版本失败：$e');
+      logger.d('Failed to read the Android version: $e');
     }
     return null;
   }
@@ -701,21 +690,20 @@ class CertStatusCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isCN = Localizations.localeOf(context) == const Locale.fromSubtags(languageCode: 'zh');
     Color color;
     IconData icon;
     String title;
     String subtitle;
 
     if (!installed) {
-      color = Colors.red;
+      color = DarkPalette.err;
       icon = Icons.error_outline;
-      title = isCN ? '证书未安装' : 'Certificate Not Installed';
-      subtitle = isCN ? '点击“安装根证书”进行安装' : 'Tap "Install Root CA" to proceed';
+      title = 'Certificate Not Installed';
+      subtitle = 'Tap "Install Root CA" to proceed';
     } else if (!trusted) {
-      color = Colors.orange;
+      color = DarkPalette.warn;
       icon = Icons.warning_amber_rounded;
-      title = isCN ? '证书未信任' : 'Certificate Not Trusted';
+      title = 'Certificate Not Trusted';
       subtitle = AppLocalizations.of(context)!.trustCaDescribe;
     } else {
       return SizedBox();
@@ -811,8 +799,6 @@ class _IosCaInstallState extends State<IosCaInstall> {
 
   @override
   Widget build(BuildContext context) {
-    final isCN = Localizations.localeOf(context) == const Locale.fromSubtags(languageCode: 'zh');
-
     return Scaffold(
       appBar: AppBar(
         title: Text(localizations.installRootCa, style: const TextStyle(fontSize: 16)),
@@ -821,35 +807,33 @@ class _IosCaInstallState extends State<IosCaInstall> {
       body: loading
           ? const Center(child: CircularProgressIndicator())
           : ListView(padding: const EdgeInsets.all(12), children: [
-              _statusCard(isCN),
-              // const SizedBox(height: 12),
-              // _actionSection(isCN),
+              _statusCard(),
               const SizedBox(height: 24),
-              _guideSection(isCN),
+              _guideSection(),
             ]),
     );
   }
 
-  Widget _statusCard(bool isCN) {
+  Widget _statusCard() {
     Color color;
     IconData icon;
     String title;
     String? subtitle;
 
     if (!installed) {
-      color = Colors.red;
+      color = DarkPalette.err;
       icon = Icons.error_outline;
-      title = isCN ? '证书未安装' : 'Certificate Not Installed';
+      title = 'Certificate Not Installed';
       subtitle = '${localizations.download} & ${localizations.installCaDescribe}';
     } else if (!trusted) {
-      color = Colors.orange;
+      color = DarkPalette.warn;
       icon = Icons.warning_amber_rounded;
-      title = isCN ? '证书未信任' : 'Certificate Not Trusted';
+      title = 'Certificate Not Trusted';
       subtitle = localizations.trustCaDescribe;
     } else {
-      color = Colors.green;
+      color = DarkPalette.ok;
       icon = Icons.verified_rounded;
-      title = isCN ? '证书已安装并信任' : 'Certificate Installed & Trusted';
+      title = 'Certificate Installed & Trusted';
     }
 
     return Card(
@@ -893,8 +877,6 @@ class _IosCaInstallState extends State<IosCaInstall> {
       _kv('Name', details.subject['2.5.4.3'] ?? 'QANIS CA', infoLabelStyle, infoValueStyle),
       const SizedBox(height: 6),
       _kv('Expires', details.validity.notAfter.toLocal().toString().split(' ').first, infoLabelStyle, infoValueStyle),
-      // const SizedBox(height: 6),
-      // _kv('Fingerprint', details.sha1Thumbprint ?? '-', infoLabelStyle, infoValueStyle),
     ]);
   }
 
@@ -913,23 +895,24 @@ class _IosCaInstallState extends State<IosCaInstall> {
     ]);
   }
 
-  Widget _guideSection(bool isCN) {
+  Widget _guideSection() {
+    final labelStyle = Theme.of(context).textTheme.bodyMedium?.copyWith(color: DarkPalette.text2);
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(isCN ? '指引' : 'Guide', style: const TextStyle(fontWeight: FontWeight.w600)),
+      const Text('Guide', style: TextStyle(fontWeight: FontWeight.w600)),
       const SizedBox(height: 6),
       TextButton(onPressed: () => _downloadCert(), child: Text("1. ${localizations.downloadRootCa}")),
       TextButton(onPressed: _copyProxyLink, child: Text(localizations.downloadRootCaNote)),
-      TextButton(onPressed: () {}, child: Text("2. ${localizations.installRootCa} -> ${localizations.trustCa}")),
-      TextButton(onPressed: () {}, child: Text("2.1 ${localizations.installCaDescribe}")),
-      Padding(
-          padding: const EdgeInsets.only(left: 15),
-          child:
-              Image.network("https://foruda.gitee.com/images/1689346516243774963/c56bc546_1073801.png", height: 400)),
-      TextButton(onPressed: () {}, child: Text("2.2 ${localizations.trustCaDescribe}")),
-      Padding(
-          padding: const EdgeInsets.only(left: 15),
-          child:
-              Image.network("https://foruda.gitee.com/images/1689346614916658100/fd9b9e41_1073801.png", height: 270)),
+      TextButton(
+          onPressed: () {},
+          child: Text("2. ${localizations.installRootCa} -> ${localizations.trustCa}", textAlign: TextAlign.left)),
+      Text("2.1 ${localizations.installCaDescribe}", style: labelStyle),
+      const SizedBox(height: 10),
+      Text("2.2 ${localizations.trustCaDescribe}", style: labelStyle),
+      const SizedBox(height: 10),
+      Text(
+          '2.3 Then open Settings > General > About > Certificate Trust Settings and switch on full trust '
+          'for the QANIS root certificate.',
+          style: labelStyle),
     ]);
   }
 }

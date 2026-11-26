@@ -86,7 +86,7 @@ class AppConfiguration {
   String headerViewMode = "table";
 
   /// 底部导航栏
-  bool bottomNavigation = true;
+  bool bottomNavigation = false;
 
   /// 内存清理
   int? memoryCleanupThreshold;
@@ -250,7 +250,7 @@ class AppConfiguration {
       pipEnabled.value = config['pipEnabled'] ?? true;
       pipIcon.value = config['pipIcon'] ?? false;
       headerViewMode = config['headerViewMode'] ?? "table";
-      bottomNavigation = config['bottomNavigation'] ?? true;
+      bottomNavigation = config['bottomNavigation'] ?? false;
       memoryCleanupThreshold = config['memoryCleanupThreshold'];
       autoReadEnabled = config['autoReadEnabled'] ?? true;
       clearConfirm = config['clearConfirm'] ?? false;

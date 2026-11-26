@@ -551,7 +551,12 @@ class _HttpState extends State<_HttpWidget> with SingleTickerProviderStateMixin,
           const SizedBox(height: 8),
           TabBar(
             controller: _innerTab,
-            isScrollable: false,
+            // 标签按文案自然宽度排布并左对齐；超出可用宽度时横向滚动，
+            // 避免末尾标签（如 Body）被裁掉
+            isScrollable: true,
+            tabAlignment: TabAlignment.start,
+            // 收紧左右内边距，让三个标签在窄屏上一屏放下
+            labelPadding: const EdgeInsets.symmetric(horizontal: 12),
             labelStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
             unselectedLabelStyle: const TextStyle(fontSize: 13),
             labelColor: theme.colorScheme.primary,

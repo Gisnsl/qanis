@@ -232,17 +232,20 @@ class NetworkTabState extends State<NetworkTabController> with TickerProviderSta
     // ---- Reqable 风格标签条 -------------------------------------------------
     // 选中：13.5sp medium text-1 + 26x2 琥珀色下划线；未选中 text-2；
     // indicatorSize.label 让下划线跟随标签，自定义装饰再把宽度收敛为 26dp 并居中。
+    // 标签条始终可横向滚动并左对齐：标签宽度按文案自然测量，一旦超出可用宽度
+    // （长本地化文案 / 大字体缩放）就滚动而不是把末尾标签裁掉。
     var tabBar = TabBar(
       padding: const EdgeInsets.only(bottom: 0),
       controller: _tabController,
-      isScrollable: isDesktop, // 桌面左对齐紧凑排列，手机均分
-      tabAlignment: isDesktop ? TabAlignment.start : null,
+      isScrollable: true,
+      tabAlignment: TabAlignment.start,
       indicator: _ReqableTabIndicator(color: detailPrimaryColor(theme)),
       indicatorSize: TabBarIndicatorSize.label,
       // 标签条底部 0.5px 发丝线
       dividerColor: detailHairlineColor(theme),
       dividerHeight: 0.5,
-      labelPadding: EdgeInsets.symmetric(horizontal: isDesktop ? 24 : 10),
+      // 收紧左右内边距，让更多标签在窄屏上一屏放下
+      labelPadding: EdgeInsets.symmetric(horizontal: isDesktop ? 16 : 8),
       labelStyle: widget.tabStyle ??
           TextStyle(fontSize: 13.5, fontWeight: FontWeight.w500, color: detailText1Color(theme)),
       unselectedLabelStyle: widget.tabStyle ??
