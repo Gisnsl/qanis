@@ -371,8 +371,8 @@ class NetworkTabState extends State<NetworkTabController> with TickerProviderSta
                               ]
                             : [
                                 SelectionArea(child: Overview(widget.request, widget.response)),
-                                KeepAliveWrapper(child: request()),
-                                KeepAliveWrapper(child: response()),
+                                KeepAliveWrapper(child: this.request()),
+                                KeepAliveWrapper(child: this.response()),
                                 SelectionArea(
                                     child: isStreamMessages
                                         ? Websocket(widget.request, widget.response)

@@ -152,7 +152,6 @@ class RequestRowState extends State<RequestRow> {
           selectedColor: highlightColor,
           selectedTileColor: DarkPalette.hoverWeak,
           splashColor: DarkPalette.hover,
-          highlightColor: DarkPalette.hover,
           leading: rowLeading(),
           title: Column(
             mainAxisSize: MainAxisSize.min,
@@ -351,9 +350,11 @@ class RequestRowState extends State<RequestRow> {
 
     //如果有缓存图标直接返回图标
     if (request.processInfo!.hasCacheIcon) {
-      return roundedIcon(imageCache.putIfAbsent(request.processInfo!.id, () {
+      final cached = imageCache.putIfAbsent(request.processInfo!.id, () {
         return Image.memory(request.processInfo!.cacheIcon!, width: 40, gaplessPlayback: true);
-      }));
+      });
+      return roundedIcon(
+          cached ?? const Icon(Icons.question_mark, size: 22, color: DarkPalette.text3));
     }
 
     return FutureBuilder(
