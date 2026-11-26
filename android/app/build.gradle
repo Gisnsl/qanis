@@ -1,6 +1,5 @@
 import java.util.Properties
 import java.io.FileInputStream
-import java.io.File
 
 plugins {
     id "com.android.application"
@@ -36,25 +35,17 @@ android {
     namespace "com.qanis.app"
     compileSdk flutter.compileSdkVersion
     ndkVersion flutter.ndkVersion
-//    ndkVersion "26.1.10909125"
 
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
-    }
-
-    kotlinOptions {
-        jvmTarget = '1.8'
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
     }
 
     sourceSets {
         main.java.srcDirs += 'src/main/kotlin'
     }
 
-    packagingOptions {
-        dex {
-            useLegacyPackaging true
-        }
+    packaging {
         jniLibs {
             useLegacyPackaging true
         }
@@ -62,8 +53,6 @@ android {
 
     defaultConfig {
         applicationId "com.qanis.app"
-        ndk { abiFilters 'armeabi-v7a', 'arm64-v8a', 'x86_64' }
-        // For more information, see: https://docs.flutter.dev/deployment/android#reviewing-the-gradle-build-configuration.
         minSdkVersion flutter.minSdkVersion
         targetSdkVersion flutter.targetSdkVersion
         multiDexEnabled true
@@ -82,16 +71,14 @@ android {
 
     buildTypes {
         release {
-            // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig signingConfigs.release
-
-            minifyEnabled true
-            shrinkResources true
-            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            // Left off so the first CI build is deterministic; turn on once the
+            // plugin/reflection surface has been smoke-tested.
+            minifyEnabled false
+            shrinkResources false
         }
         debug {
             signingConfig signingConfigs.release
-            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
 }
@@ -100,22 +87,10 @@ flutter {
     source '../..'
 }
 
-// Set a fixed APK name for release builds
-// Use the older ApplicationVariants API which is compatible across AGP versions
-android.applicationVariants.all { variant ->
-    if (variant.buildType.name == 'release') {
-        variant.outputs.all { output ->
-            def apkName = "qanis-android-${flutterVersionName}.apk"
-            try {
-                // Newer output API
-                output.outputFileName = apkName
-            } catch (Exception e) {
-                // Fallback for older API
-                output.outputFile = new File(output.outputFile.parent, apkName)
-            }
-        }
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
     }
 }
 
-dependencies {
-}
+dependencies {}
