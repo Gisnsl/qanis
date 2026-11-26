@@ -1,0 +1,189 @@
+/*
+ * Copyright 2026 Hongen Wang All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:qanis/network/util/logger.dart';
+
+import '../protocol/json_rpc.dart';
+import '../protocol/mcp_server.dart';
+import 'setup_script.dart';
+
+/// MCP Streamable HTTP 传输（无状态，单 JSON 响应）。
+///
+/// 桌面仅绑定 loopback 且不鉴权，AI 客户端直接以 HTTP 连接（无额外桥进程）；
+/// 移动端可绑定 loopback 或所有网卡，可选择是否要求 Bearer token。
+///
+/// @author wanghongen
+class McpHttpServer {
+  static const String path = '/mcp';
+
+  final McpServer mcp;
+
+  /// 绑定地址：loopback（桌面或移动端仅本机）或 0.0.0.0（移动端 LAN）
+  final InternetAddress address;
+
+  /// 非空时 /mcp 请求必须携带 `Authorization: Bearer <token>`
+  final String? token;
+
+  HttpServer? _server;
+
+  McpHttpServer({required this.mcp, InternetAddress? address, this.token})
+      : address = address ?? InternetAddress.loopbackIPv4;
+
+  bool get isRunning => _server != null;
+
+  int? get port => _server?.port;
+
+  Future<void> start(int preferredPort) async {
+    if (_server != null) return;
+    _server = await HttpServer.bind(address, preferredPort, shared: false);
+    _server!.listen(_handle, onError: (e) => logger.e('MCP http server error: $e'));
+    logger.i('MCP http server listening on ${address.address}:${_server!.port}');
+  }
+
+  Future<void> stop() async {
+    // 先清除状态：close 等待期间，UI 不能再读取已解绑 socket 的 port。
+    final server = _server;
+    _server = null;
+    await server?.close(force: true);
+  }
+
+  void _handle(HttpRequest req) async {
+    try {
+      if (req.method == 'GET' && req.uri.path == '/') {
+        if (!_authorized(req)) return;
+        req.response.headers.contentType = ContentType.json;
+        req.response.statusCode = HttpStatus.ok;
+        req.response.write(jsonEncode({'service': 'qanis-mcp', 'status': 'running'}));
+        await req.response.close();
+        return;
+      }
+
+      // 一键配置脚本下发（仅 LAN token 模式有意义）：/mcp/setup.sh、/mcp/setup.ps1
+      if (req.method == 'GET' && (req.uri.path == '$path/setup.sh' || req.uri.path == '$path/setup.ps1')) {
+        await _handleSetupScript(req);
+        return;
+      }
+
+      if (req.method != 'POST' || req.uri.path != path) {
+        req.response.statusCode = HttpStatus.notFound;
+        await req.response.close();
+        return;
+      }
+
+      // 配置 token 时校验 Bearer token，不匹配直接 401
+      if (!_authorized(req)) return;
+
+      var body = await req.cast<List<int>>().transform(utf8.decoder).join();
+      Map<String, dynamic> message;
+      try {
+        var decoded = jsonDecode(body);
+        if (decoded is! Map<String, dynamic>) {
+          throw const FormatException('expected JSON object');
+        }
+        message = decoded;
+      } catch (e) {
+        await _writeJson(req, JsonRpcResponse.error(null, JsonRpcError(JsonRpcError.parseError, 'Parse error: $e')),
+            HttpStatus.badRequest);
+        return;
+      }
+
+      var response = await mcp.handle(message);
+      if (response == null) {
+        // 通知：202 无响应体
+        req.response.statusCode = HttpStatus.accepted;
+        await req.response.close();
+        return;
+      }
+
+      var accept = req.headers.value(HttpHeaders.acceptHeader) ?? '';
+      if (accept.contains('text/event-stream') && !accept.contains('application/json')) {
+        await _writeSse(req, response);
+      } else {
+        await _writeJson(req, response, HttpStatus.ok);
+      }
+    } catch (e, st) {
+      logger.e('MCP request error', error: e, stackTrace: st);
+      try {
+        req.response.statusCode = HttpStatus.internalServerError;
+        await req.response.close();
+      } catch (_) {}
+    }
+  }
+
+  /// 配置 token 时校验 Bearer token；不通过时直接写 401 并返回 false。
+  bool _authorized(HttpRequest req) {
+    if (token == null || req.headers.value(HttpHeaders.authorizationHeader) == 'Bearer $token') {
+      return true;
+    }
+    req.response.statusCode = HttpStatus.unauthorized;
+    req.response.headers.set(HttpHeaders.wwwAuthenticateHeader, 'Bearer');
+    unawaited(req.response.close());
+    return false;
+  }
+
+  /// 下发一键配置脚本。endpoint 取自请求 Host 头，保证脚本里的地址就是电脑访问手机的地址。
+  Future<void> _handleSetupScript(HttpRequest req) async {
+    // 配置脚本同样要求 Bearer token，避免被其他客户端随意拉取。
+    if (!_authorized(req)) return;
+    // Host 头由客户端按实际访问地址（手机 LAN IP:端口）发送，curl/irm 一定会携带。
+    // 回退到绑定地址只会拼出电脑不可达的 0.0.0.0，因此缺失/非法时直接 400；
+    // 同时只允许主机名/IP 与端口字符，防止 Host 注入到下发的脚本里。
+    var host = req.headers.host;
+    if (host == null || !RegExp(r"^[A-Za-z0-9._\-]+(:\d+)?$|^\[[0-9a-fA-F:]+\](:\d+)?$").hasMatch(host)) {
+      req.response.statusCode = HttpStatus.badRequest;
+      req.response.write('Missing or invalid Host header');
+      await req.response.close();
+      return;
+    }
+    if (!host.contains(':')) {
+      host = '$host:${_server?.port ?? ''}';
+    }
+    var endpoint = 'http://$host$path';
+    var isShell = req.uri.path.endsWith('.sh');
+    var script = isShell
+        ? McpSetupScript.shell(endpoint: endpoint, token: token)
+        : McpSetupScript.powershell(endpoint: endpoint, token: token);
+    req.response.statusCode = HttpStatus.ok;
+    // 显式 utf-8 charset，并直接写字节：HttpResponse.write 默认按 Latin-1 编码，
+    // 脚本中一旦出现非 ASCII 字符（注释）会抛异常导致 500 空响应。
+    req.response.headers.contentType = isShell
+        ? ContentType('text', 'x-shellscript', charset: 'utf-8')
+        : ContentType('text', 'plain', charset: 'utf-8');
+    req.response.headers.set('Cache-Control', 'no-store');
+    req.response.add(utf8.encode(script));
+    await req.response.close();
+  }
+
+  Future<void> _writeJson(HttpRequest req, Map<String, dynamic> payload, int status) async {
+    req.response.statusCode = status;
+    req.response.headers.contentType = ContentType.json;
+    req.response.headers.set('MCP-Protocol-Version', McpServer.protocolVersion);
+    req.response.write(jsonEncode(payload));
+    await req.response.close();
+  }
+
+  Future<void> _writeSse(HttpRequest req, Map<String, dynamic> payload) async {
+    req.response.statusCode = HttpStatus.ok;
+    req.response.headers.contentType = ContentType.parse('text/event-stream');
+    req.response.headers.set('Cache-Control', 'no-cache');
+    req.response.write('event: message\ndata: ${jsonEncode(payload)}\n\n');
+    await req.response.close();
+  }
+}
