@@ -237,6 +237,22 @@ class SearchModel {
       }
     }
 
+    if (option == Option.cookies) {
+      for (var entry in request.headers.entries) {
+        if (entry.key.toLowerCase() == 'cookie' && entry.value.any(matches)) {
+          return true;
+        }
+      }
+      if (response != null) {
+        for (var entry in response.headers.entries) {
+          if (entry.key.toLowerCase() == 'set-cookie' && entry.value.any(matches)) {
+            return true;
+          }
+        }
+      }
+      return false;
+    }
+
     if (option == Option.requestHeader || option == Option.responseHeader) {
       var entries = option == Option.requestHeader ? request.headers.entries : response?.headers.entries ?? [];
 
@@ -258,6 +274,7 @@ enum Option {
   requestBody,
   responseHeader,
   responseBody,
+  cookies,
 }
 
 /// 协议快速筛选

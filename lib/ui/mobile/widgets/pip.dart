@@ -122,7 +122,6 @@ class _PictureInPictureWindowState extends State<PictureInPictureWindow> {
                       style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: DarkPalette.text1),
                     ),
                   ),
-                  Text('${flows.length} flows', style: const TextStyle(fontSize: 11, color: DarkPalette.text2)),
                 ],
               ),
             ),

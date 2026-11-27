@@ -129,10 +129,11 @@ class SearchConditionsState extends State<SearchConditions> {
           Wrap(
             children: [
               options('URL', Option.url),
-              options(localizations.requestHeader, Option.requestHeader),
-              options(localizations.requestBody, Option.requestBody),
-              options(localizations.responseHeader, Option.responseHeader),
-              options(localizations.responseBody, Option.responseBody),
+              options('Request Headers', Option.requestHeader),
+              options('Request Body', Option.requestBody),
+              options('Response Headers', Option.responseHeader),
+              options('Response Body', Option.responseBody),
+              options('Cookies', Option.cookies),
             ],
           ),
           const SizedBox(height: 10),

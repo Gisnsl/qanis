@@ -189,6 +189,12 @@ abstract class HttpMessage {
 
 ///HTTP请求。
 class HttpRequest extends HttpMessage {
+  /// 用户为该请求添加的备注（不参与序列化）
+  String? comment;
+
+  /// 用户给该请求起的名字（不参与序列化）
+  String? name;
+
   String _uri;
   HttpMethod method;
 

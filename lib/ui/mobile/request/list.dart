@@ -73,13 +73,10 @@ class RequestListState extends State<RequestListWidget> {
 
   @override
   Widget build(BuildContext context) {
-    List<Widget> tabs = [Tab(child: Text(localizations.sequence)), Tab(child: Text(localizations.domainList))];
+    List<Widget> tabs = [Tab(child: Text(localizations.sequence))];
 
     //double click scroll to top
-    var tabClickHandles = [
-      DoubleClickHandle(handle: () => requestSequenceKey.currentState?.scrollToTop()),
-      DoubleClickHandle(handle: () => domainListKey.currentState?.scrollToTop())
-    ];
+    var tabClickHandles = [DoubleClickHandle(handle: () => requestSequenceKey.currentState?.scrollToTop())];
 
     return DefaultTabController(
         length: tabs.length,
@@ -117,16 +114,6 @@ class RequestListState extends State<RequestListWidget> {
                     proxyServer: widget.proxyServer,
                     onRemove: sequenceRemove,
                     selectionController: widget.selectionController),
-                DomainList(
-                    key: domainListKey,
-                    list: container,
-                    proxyServer: widget.proxyServer,
-                    onRemove: domainListRemove,
-                    onInitialized: () {
-                      if (_currentSearchModel != null && _currentSearchModel!.isNotEmpty) {
-                        domainListKey.currentState?.search(_currentSearchModel!);
-                      }
-                    }),
               ],
             ),
           ),
@@ -172,7 +159,7 @@ class RequestListState extends State<RequestListWidget> {
                 selectedColor: DarkPalette.text1,
                 iconColor: DarkPalette.text2,
                 // Reqable 行高约 72dp，左右 16dp
-                minTileHeight: 72,
+                minTileHeight: 78,
                 minVerticalPadding: 10,
                 horizontalTitleGap: 12,
                 contentPadding: const EdgeInsets.symmetric(horizontal: 16),

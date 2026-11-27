@@ -18,6 +18,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:qanis/ui/component/multi_window_compat.dart';
+import 'package:qanis/ui/content/request_detail_tabs.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_toastr/flutter_toastr.dart';
@@ -165,7 +166,7 @@ class NetworkTabState extends State<NetworkTabController> with TickerProviderSta
 
   void _configureTabs(bool mqtt) {
     _mqttTabs = mqtt;
-    tabs = mqtt ? ['General', 'MQTT'] : ['General', 'Request', 'Response', 'Cookies'];
+    tabs = mqtt ? ['General', 'MQTT'] : RequestDetailTabs.resolve();
     _tabController =
         TabController(length: tabs.length, vsync: this, initialIndex: widget.initialTab.clamp(0, tabs.length - 1));
     _tabController.addListener(() {

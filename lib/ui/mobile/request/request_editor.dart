@@ -19,11 +19,20 @@ import 'dart:convert';
 import 'package:code_forge/code_forge.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:re_highlight/styles/atom-one-dark.dart';
 import 'package:re_highlight/styles/atom-one-light.dart';
 import 'package:qanis/l10n/app_localizations.dart';
+import 'package:qanis/ui/component/utils.dart';
 import 'package:flutter_toastr/flutter_toastr.dart';
 import 'package:qanis/network/bin/server.dart';
+import 'package:qanis/ui/content/code_snippet.dart';
+import 'package:qanis/ui/mobile/request/composer_auth_tab.dart';
+import 'package:qanis/ui/mobile/mobile.dart';
+import 'package:qanis/ui/mobile/request/cookie_jar.dart';
+import 'package:qanis/ui/mobile/request/composer_docs_tab.dart';
+import 'package:qanis/ui/mobile/request/composer_settings_tab.dart';
+import 'package:qanis/ui/mobile/setting/environment.dart';
 import 'package:qanis/network/channel/host_port.dart';
 import 'package:qanis/network/components/manager/environment_manager.dart';
 import 'package:qanis/network/http/content_type.dart';
@@ -122,9 +131,204 @@ class RequestEditorState extends State<MobileRequestEditor> with SingleTickerPro
         initialIndex: widget.source == RequestEditorSource.breakpointResponse ? 1 : 0);
     request = widget.request;
     response = widget.response;
+    // 用当前配置初始化 Composer Settings，避免默认值覆盖用户的全局设置
+    ComposerSettings.http2 = widget.proxyServer?.configuration.enabledHttp2 ?? ComposerSettings.http2;
+    ComposerSettings.followRedirects = true;
+    ComposerSettings.sendCookies = true;
     if (widget.request == null) {
       curlParse();
     }
+  }
+
+  /// Composer ⋮ menu: every entry maps to a feature that already exists.
+  Future<void> _composerMenuAction(String value) async {
+    switch (value) {
+      case 'rename':
+        await _renameRequest();
+        break;
+      case 'reset':
+        requestLineKey.currentState?.requestUrl.clear();
+        requestLineKey.currentState?.requestMethod = HttpMethod.get;
+        setState(() {});
+        FlutterToastr.show('Request reset', context);
+        break;
+      case 'clear':
+        requestLineKey.currentState?.requestUrl.clear();
+        requestLineKey.currentState?.requestMethod = HttpMethod.get;
+        requestKey.currentState?.headerKey.currentState?.clearAll();
+        setState(() {});
+        FlutterToastr.show('Cleared', context);
+        break;
+      case 'import_http':
+        await _importRawHttp();
+        break;
+      case 'import_curl':
+        await curlParse();
+        break;
+      case 'export_curl':
+        final req = request;
+        if (req == null) {
+          FlutterToastr.show('Nothing to export yet', context);
+          return;
+        }
+        await Clipboard.setData(ClipboardData(text: curlRequest(req)));
+        if (mounted) FlutterToastr.show('cURL copied', context);
+        break;
+      case 'snippet':
+        final req = request;
+        if (req == null) {
+          FlutterToastr.show('Nothing to export yet', context);
+          return;
+        }
+        Navigator.of(context)
+            .push(MaterialPageRoute(builder: (_) => CodeSnippetPage(request: req)));
+        break;
+      case 'environment':
+        Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MobileEnvironmentPage()));
+        break;
+      case 'cookie_jar':
+        Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => CookieJarPage(container: MobileApp.container)));
+        break;
+      case 'download':
+        await _downloadRequest();
+        break;
+    }
+  }
+
+  /// Sends the request and, when "Follow redirects" is on, follows up to five
+  /// 3xx hops (301/302/303/307/308) before handing the final response back.
+  Future<HttpResponse> _sendWithRedirects(ProxyInfo? proxyInfo, HttpRequest request) async {
+    final timeout = Duration(milliseconds: ComposerSettings.timeoutMs);
+    var current = request;
+    var response = await HttpClients.proxyRequest(proxyInfo: proxyInfo, current, timeout: timeout);
+
+    if (!ComposerSettings.followRedirects) {
+      return response;
+    }
+
+    var hops = 0;
+    while (hops < 5) {
+      final status = response.status.code;
+      if (status != 301 && status != 302 && status != 303 && status != 307 && status != 308) {
+        break;
+      }
+      final location = response.headers.get('location');
+      if (location == null || location.isEmpty) break;
+
+      final next = Uri.parse(current.requestUrl).resolve(location).toString();
+      final followUp = HttpRequest(current.method, next, protocolVersion: current.protocolVersion);
+      for (final entry in current.headers.entries) {
+        for (final value in entry.value) {
+          followUp.headers.add(entry.key, value);
+        }
+      }
+      followUp.headers.remove(HttpHeaders.HOST);
+      if (status != 307 && status != 308) {
+        followUp.body = null;
+        followUp.headers.remove('Content-Length');
+        followUp.headers.remove('Content-Type');
+      } else {
+        followUp.body = current.body;
+      }
+
+      current = followUp;
+      response = await HttpClients.proxyRequest(proxyInfo: proxyInfo, current, timeout: timeout);
+      hops++;
+    }
+    return response;
+  }
+
+  /// Rename: a display name for this request, shown in the composer title
+  Future<void> _renameRequest() async {
+    final controller = TextEditingController(text: request?.name ?? '');
+    final name = await showDialog<String>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+              title: const Text('Rename', style: TextStyle(fontSize: 17)),
+              content: TextField(
+                controller: controller,
+                autofocus: true,
+                style: const TextStyle(fontSize: 13),
+                decoration: const InputDecoration(hintText: 'Request name', border: OutlineInputBorder()),
+              ),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+                TextButton(
+                    onPressed: () => Navigator.pop(dialogContext, controller.text), child: const Text('Save')),
+              ],
+            ));
+    controller.dispose();
+    if (name == null || !mounted) return;
+    setState(() {
+      request?.name = name.trim().isEmpty ? null : name.trim();
+    });
+    FlutterToastr.show('Renamed', context);
+  }
+
+  /// Download: hand the request to the system share sheet as a .http file
+  Future<void> _downloadRequest() async {
+    final req = request;
+    if (req == null) {
+      FlutterToastr.show('Nothing to download yet', context);
+      return;
+    }
+    final buffer = StringBuffer();
+    buffer.writeln('${req.method.name} ${req.requestUrl}');
+    for (final entry in req.headers.entries) {
+      for (final value in entry.value) {
+        buffer.writeln('${entry.key}: $value');
+      }
+    }
+    final body = req.bodyAsString;
+    if (body.isNotEmpty) {
+      buffer.writeln();
+      buffer.write(body);
+    }
+    final name = 'QANIS-request-${DateTime.now().millisecondsSinceEpoch}.http';
+    final file = XFile.fromData(utf8.encode(buffer.toString()), mimeType: 'text/plain');
+    await SharePlus.instance.share(ShareParams(files: [file], fileNameOverrides: [name]));
+  }
+
+  /// Import HTTP: paste a raw request (METHOD url, headers, blank line, body)
+  Future<void> _importRawHttp() async {
+    final controller = TextEditingController(text: (await Clipboard.getData('text/plain'))?.text ?? '');
+    if (!mounted) return;
+    final raw = await showDialog<String>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+              title: const Text('Import HTTP', style: TextStyle(fontSize: 17)),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: TextField(
+                  controller: controller,
+                  maxLines: 10,
+                  style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+                  decoration: const InputDecoration(
+                      hintText: 'POST https://example.com/api\nContent-Type: application/json\n\n{"a":1}',
+                      border: OutlineInputBorder()),
+                ),
+              ),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+                TextButton(
+                    onPressed: () => Navigator.pop(dialogContext, controller.text), child: const Text('Import')),
+              ],
+            ));
+    controller.dispose();
+    if (raw == null || raw.trim().isEmpty || !mounted) return;
+
+    final lines = raw.replaceAll('\r\n', '\n').split('\n');
+    if (lines.isEmpty) return;
+    final first = lines.first.trim().split(' ');
+    if (first.length < 2) {
+      FlutterToastr.show('Could not read the request line', context);
+      return;
+    }
+    requestLineKey.currentState?.requestMethod = HttpMethod.valueOf(first[0].toUpperCase());
+    requestLineKey.currentState?.requestUrl.text = first.sublist(1).join(' ');
+    setState(() {});
+    FlutterToastr.show('Imported', context);
   }
 
   Future<void> curlParse() async {
@@ -187,13 +391,30 @@ class RequestEditorState extends State<MobileRequestEditor> with SingleTickerPro
 
     return Scaffold(
         appBar: AppBar(
-            title: Text(localizations.httpRequest, style: const TextStyle(fontSize: 16)),
+            title: Text((request?.name?.isNotEmpty == true) ? request!.name! : localizations.httpRequest,
+                style: const TextStyle(fontSize: 16)),
             centerTitle: true,
             leadingWidth: 72,
             leading: TextButton(
                 onPressed: () => Navigator.pop(context),
                 child: Text(localizations.cancel, style: Theme.of(context).textTheme.bodyMedium)),
             actions: [
+              PopupMenuButton<String>(
+                  icon: const Icon(Icons.more_vert, size: 20),
+                  tooltip: 'More',
+                  onSelected: (value) => _composerMenuAction(value),
+                  itemBuilder: (context) => const [
+                    PopupMenuItem(value: 'reset', child: Text('Reset')),
+                    PopupMenuItem(value: 'rename', child: Text('Rename')),
+                    PopupMenuItem(value: 'clear', child: Text('Clear')),
+                    PopupMenuItem(value: 'import_http', child: Text('Import HTTP')),
+                    PopupMenuItem(value: 'import_curl', child: Text('Import cURL')),
+                    PopupMenuItem(value: 'export_curl', child: Text('Export cURL')),
+                    PopupMenuItem(value: 'snippet', child: Text('Code Snippet')),
+                    PopupMenuItem(value: 'environment', child: Text('Environment')),
+                    PopupMenuItem(value: 'cookie_jar', child: Text('Cookie Jar')),
+                    PopupMenuItem(value: 'download', child: Text('Download')),
+                  ]),
               TextButton.icon(
                   icon: Icon(icon),
                   label: Text(buttonText),
@@ -259,12 +480,21 @@ class RequestEditorState extends State<MobileRequestEditor> with SingleTickerPro
     request.headers.addAll(headers);
     request.body = bodyBytes;
 
+    // Composer Settings → the real send path
+    if (!ComposerSettings.sendCookies) {
+      request.headers.remove('Cookie');
+    }
+    widget.proxyServer?.configuration.enabledHttp2 = ComposerSettings.http2;
+    if (!ComposerSettings.http2) {
+      request.protocolVersion = 'HTTP/1.1';
+    }
+
     var proxyInfo = widget.proxyServer?.isRunning == true ? ProxyInfo.of("127.0.0.1", widget.proxyServer?.port) : null;
 
     responseKey.currentState?.change(null);
     responseChange.value = 0;
 
-    HttpClients.proxyRequest(proxyInfo: proxyInfo, request, timeout: Duration(seconds: 30)).then((response) {
+    _sendWithRedirects(proxyInfo, request).then((response) {
       this.response = response;
       this.response?.request = request;
       responseKey.currentState?.change(response);
@@ -445,7 +675,7 @@ class _HttpState extends State<_HttpWidget> with SingleTickerProviderStateMixin,
     body = CodeForgeController()..text = widget.message?.bodyAsString ?? '';
     _bodyLanguage = _resolveLanguage(widget.message);
     _loadFormData(widget.message);
-    _innerTab = TabController(length: _hasParamsTab ? 3 : 2, vsync: this, initialIndex: _hasParamsTab ? 1 : 0);
+    _innerTab = TabController(length: _hasParamsTab ? 6 : 5, vsync: this, initialIndex: _hasParamsTab ? 1 : 0);
     if (widget.message?.headers == null && !widget.readOnly) {
       initHeader["User-Agent"] = ["QANIS/${AppConfiguration.version}"];
       initHeader["Accept"] = ["*/*"];
@@ -565,6 +795,9 @@ class _HttpState extends State<_HttpWidget> with SingleTickerProviderStateMixin,
               if (_hasParamsTab) Tab(text: 'Params', height: 36),
               const Tab(text: 'Headers', height: 36),
               const Tab(text: 'Body', height: 36),
+              const Tab(text: 'Authorization', height: 36),
+              const Tab(text: 'Docs', height: 36),
+              const Tab(text: 'Settings', height: 36),
             ],
           ),
           const SizedBox(height: 6),
@@ -581,11 +814,27 @@ class _HttpState extends State<_HttpWidget> with SingleTickerProviderStateMixin,
                   if (paramsTab != null) SingleChildScrollView(child: paramsTab),
                   SingleChildScrollView(child: headersTab),
                   _body(),
+                  SingleChildScrollView(child: _composerTab((req) => ComposerAuthTab(request: req))),
+                  SingleChildScrollView(child: _composerTab((req) => ComposerDocsTab(request: req))),
+                  SingleChildScrollView(child: _composerTab((req) => ComposerSettingsTab(request: req))),
                 ],
               ),
             ),
           ),
         ]));
+  }
+
+  /// 新增的三个 tab 只对「请求」有意义；响应侧显示占位说明
+  Widget _composerTab(Widget Function(HttpRequest request) builder) {
+    final req = message;
+    if (req is HttpRequest) {
+      return builder(req);
+    }
+    return const Padding(
+      padding: EdgeInsets.all(16),
+      child: Text('Only available for a request',
+          style: TextStyle(fontSize: 13, color: DarkPalette.text3)),
+    );
   }
 
   Widget _body() {
@@ -930,6 +1179,11 @@ final Map<String, bool> _expanded = {};
 
 class KeyValState extends State<KeyValWidget> with AutomaticKeepAliveClientMixin {
   final List<KeyVal> _params = [];
+
+  /// 清空所有键值行（供「Clear」菜单使用）
+  void clearAll() {
+    setState(() => _params.clear());
+  }
 
   AppLocalizations get localizations => AppLocalizations.of(context)!;
 

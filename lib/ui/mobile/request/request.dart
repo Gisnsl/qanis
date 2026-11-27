@@ -143,9 +143,9 @@ class RequestRowState extends State<RequestRow> {
     return GestureDetector(
         onLongPressStart: menu,
         child: ListTile(
-          // 高度由 ListTileTheme.minTileHeight(72) 决定，这里不再压缩行高
+          // 高度由 ListTileTheme.minTileHeight(78) 决定；上下各留 6dp 呼吸空间
           minLeadingWidth: 5,
-          minVerticalPadding: 0,
+          minVerticalPadding: 6,
           selected: selected ||
               (widget.selectionController.isSelectionMode && widget.selectionController.contains(request.requestId)),
           textColor: highlightColor,

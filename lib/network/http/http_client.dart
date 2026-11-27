@@ -17,8 +17,11 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 import 'dart:typed_data';
 
+import 'package:pointycastle/digests/md5.dart';
+import 'package:pointycastle/digests/sha256.dart';
 import 'package:qanis/network/channel/channel_context.dart';
 import 'package:qanis/network/channel/host_port.dart';
 import 'package:qanis/network/http/h2/h2_codec.dart';
@@ -180,7 +183,256 @@ class HttpClients {
       request.streamId = 1;
     }
     await channel.write(channelContext, request);
-    return httpResponseHandler.getResponse(timeout).whenComplete(() => channel.close());
+    final response = await httpResponseHandler.getResponse(timeout).whenComplete(() => channel.close());
+    return _answerDigestChallenge(request, response, proxyInfo: proxyInfo, timeout: timeout);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Digest authentication (RFC 7616, backwards compatible with RFC 2617)
+  //
+  // A Digest header cannot be precomputed: it needs the server's realm/nonce
+  // from a 401 challenge. The composer's Authorization tab therefore only
+  // stashes credentials in `request.attributes` (see composer_auth_tab.dart);
+  // everything below turns that stash into a header on exactly one retry.
+  // ---------------------------------------------------------------------------
+
+  /// Attribute keys written by the composer's Digest Auth mode.
+  static const String digestUserAttr = 'qanis.auth.digest.username';
+  static const String digestPassAttr = 'qanis.auth.digest.password';
+
+  static const String _authorizationHeader = 'Authorization';
+  static const String _wwwAuthenticateHeader = 'www-authenticate';
+
+  static final Random _digestRandom = Random.secure();
+
+  /// Answers a 401 Digest challenge with a single retry.
+  ///
+  /// Returns [response] untouched unless it is a 401 whose `WWW-Authenticate`
+  /// header carries a Digest challenge this client can compute *and* the
+  /// request carries Digest credentials. Never retries twice: the retry goes
+  /// through [request.copy], which does not carry `attributes` over, so the
+  /// second attempt cannot re-enter this method. Any failure (malformed
+  /// challenge, unsupported algorithm, transport error on the retry) returns
+  /// the original 401 instead of throwing, so requests that do not use Digest
+  /// auth behave exactly as before.
+  static Future<HttpResponse> _answerDigestChallenge(HttpRequest request, HttpResponse response,
+      {ProxyInfo? proxyInfo, required Duration timeout}) async {
+    try {
+      if (response.status.code != 401) {
+        return response;
+      }
+
+      final username = request.attributes[digestUserAttr];
+      final password = request.attributes[digestPassAttr];
+      if (username is! String || password is! String) {
+        return response;
+      }
+
+      final challenge = _digestChallenge(response.headers);
+      if (challenge == null) {
+        return response;
+      }
+
+      final authorization = _digestAuthorization(challenge,
+          username: username, password: password, method: request.method.name, uri: _digestUri(request));
+      if (authorization == null) {
+        return response;
+      }
+
+      final retry = request.copy();
+      retry.headers.set(_authorizationHeader, authorization);
+      return await proxyRequest(retry, proxyInfo: proxyInfo, timeout: timeout);
+    } catch (e) {
+      logger.w('digest auth: challenge not answered: $e');
+      return response;
+    }
+  }
+
+  /// First `WWW-Authenticate` value that is a Digest challenge, if any.
+  static String? _digestChallenge(HttpHeaders headers) {
+    final values = headers.getList(_wwwAuthenticateHeader);
+    if (values == null) {
+      return null;
+    }
+    for (final value in values) {
+      if (RegExp(r'^\s*digest\b', caseSensitive: false).hasMatch(value)) {
+        return value;
+      }
+    }
+    return null;
+  }
+
+  /// Parses `Digest realm="r", qop="auth,auth-int", nonce="n", ...` into its
+  /// parameters (names lower-cased, quoting and escapes removed). Commas inside
+  /// quoted values are kept, so `qop="auth,auth-int"` stays one value.
+  static Map<String, String> _digestParams(String challenge) {
+    final params = <String, String>{};
+    final text = challenge.trim();
+    final schemeEnd = text.indexOf(' ');
+    if (schemeEnd < 0) {
+      return params;
+    }
+
+    final body = text.substring(schemeEnd + 1);
+    var i = 0;
+    while (i < body.length) {
+      // Skip the separator run between parameters.
+      while (i < body.length && (body[i] == ',' || body[i].trim().isEmpty)) {
+        i++;
+      }
+
+      final nameStart = i;
+      while (i < body.length && body[i] != '=' && body[i] != ',') {
+        i++;
+      }
+      if (i >= body.length || body[i] == ',') {
+        continue; // a token without a value; the skip loop above moves on
+      }
+
+      final name = body.substring(nameStart, i).trim().toLowerCase();
+      i++; // '='
+      while (i < body.length && body[i].trim().isEmpty) {
+        i++;
+      }
+
+      String value;
+      if (i < body.length && body[i] == '"') {
+        i++;
+        final buffer = StringBuffer();
+        while (i < body.length && body[i] != '"') {
+          if (body[i] == '\\' && i + 1 < body.length) {
+            i++; // quoted-pair: keep the escaped character verbatim
+          }
+          buffer.write(body[i]);
+          i++;
+        }
+        i++; // closing quote
+        value = buffer.toString();
+      } else {
+        final valueStart = i;
+        while (i < body.length && body[i] != ',') {
+          i++;
+        }
+        value = body.substring(valueStart, i).trim();
+      }
+
+      if (name.isNotEmpty) {
+        params[name] = value;
+      }
+    }
+    return params;
+  }
+
+  /// Builds the `Authorization: Digest ...` value for [challenge], or null when
+  /// the challenge cannot be answered (no nonce, unsupported algorithm, or only
+  /// auth-int offered).
+  static String? _digestAuthorization(String challenge,
+      {required String username, required String password, required String method, required String uri}) {
+    final params = _digestParams(challenge);
+
+    final nonce = params['nonce'];
+    if (nonce == null || nonce.isEmpty) {
+      return null;
+    }
+    final realm = params['realm'] ?? '';
+
+    final algorithmParam = (params['algorithm'] ?? '').trim();
+    final algorithm = algorithmParam.isEmpty ? 'MD5' : algorithmParam.toUpperCase();
+    final bool isSess;
+    final String canonicalAlgorithm;
+    if (algorithm == 'MD5' || algorithm == 'SHA-256') {
+      isSess = false;
+      canonicalAlgorithm = algorithm;
+    } else if (algorithm == 'MD5-SESS') {
+      isSess = true;
+      canonicalAlgorithm = 'MD5-sess';
+    } else if (algorithm == 'SHA-256-SESS') {
+      isSess = true;
+      canonicalAlgorithm = 'SHA-256-sess';
+    } else {
+      return null; // SHA-512-256 etc.: not computable here, leave the 401 alone
+    }
+
+    // qop is a list; only "auth" is computable (auth-int needs an entity-body
+    // hash this client does not send).
+    String? qop;
+    final qopParam = params['qop'];
+    if (qopParam != null && qopParam.trim().isNotEmpty) {
+      final offered = qopParam.split(',').map((e) => e.trim().toLowerCase());
+      if (!offered.contains('auth')) {
+        return null;
+      }
+      qop = 'auth';
+    }
+
+    const nc = '00000001';
+    final cnonce = _randomHex(16);
+    final opaque = params['opaque'];
+
+    final ha1Base = _digestHex(algorithm, '$username:$realm:$password');
+    final ha1 = isSess ? _digestHex(algorithm, '$ha1Base:$nonce:$cnonce') : ha1Base;
+    final ha2 = _digestHex(algorithm, '${method.toUpperCase()}:$uri');
+    final responseHash = qop == null
+        ? _digestHex(algorithm, '$ha1:$nonce:$ha2')
+        : _digestHex(algorithm, '$ha1:$nonce:$nc:$cnonce:$qop:$ha2');
+
+    final buffer = StringBuffer('Digest ')
+      ..write('username="${_digestQuote(username)}"')
+      ..write(', realm="${_digestQuote(realm)}"')
+      ..write(', nonce="${_digestQuote(nonce)}"')
+      ..write(', uri="${_digestQuote(uri)}"')
+      ..write(', response="$responseHash"');
+    if (qop != null) {
+      buffer.write(', qop=$qop, nc=$nc, cnonce="$cnonce"');
+    } else if (isSess) {
+      buffer.write(', cnonce="$cnonce"'); // required by -sess even without qop
+    }
+    if (opaque != null) {
+      buffer.write(', opaque="${_digestQuote(opaque)}"');
+    }
+    if (canonicalAlgorithm != 'MD5') {
+      // MD5 is the default; the sess/SHA-256 variants must be declared.
+      buffer.write(', algorithm=$canonicalAlgorithm');
+    }
+    return buffer.toString();
+  }
+
+  /// MD5 for MD5/MD5-sess, SHA-256 for SHA-256/SHA-256-sess (RFC 7616 §3.2).
+  static String _digestHex(String algorithm, String data) {
+    final bytes = Uint8List.fromList(utf8.encode(data));
+    final digest = algorithm.startsWith('SHA-256') ? SHA256Digest() : MD5Digest();
+    return _digestHexEncode(digest.process(bytes));
+  }
+
+  static String _digestHexEncode(List<int> bytes) {
+    final buffer = StringBuffer();
+    for (final byte in bytes) {
+      buffer.write(byte.toRadixString(16).padLeft(2, '0'));
+    }
+    return buffer.toString();
+  }
+
+  /// Random 16-hex-character client nonce (64 bits).
+  static String _randomHex(int length) {
+    final buffer = StringBuffer();
+    for (var i = 0; i < length; i++) {
+      buffer.write(_digestRandom.nextInt(16).toRadixString(16));
+    }
+    return buffer.toString();
+  }
+
+  /// Escapes a quoted-string value (RFC 7230 §3.2.6).
+  static String _digestQuote(String value) => value.replaceAll('\\', '\\\\').replaceAll('"', '\\"');
+
+  /// The `uri` the digest is computed over: path plus query, as sent.
+  static String _digestUri(HttpRequest request) {
+    final parsed = request.requestUri;
+    if (parsed != null) {
+      final path = parsed.path.isEmpty ? '/' : parsed.path;
+      return parsed.hasQuery ? '$path?${parsed.query}' : path;
+    }
+    final raw = request.uri;
+    return raw.startsWith('/') ? raw : '/';
   }
 }
 

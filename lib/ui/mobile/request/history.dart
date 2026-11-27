@@ -280,12 +280,43 @@ class _MobileHistoryState extends State<MobileHistory> {
 
   int selectIndex = -1;
 
+  /// 删除前确认：滑动删除与长按菜单共用
+  Future<bool> _confirmDeleteHistory() async {
+    final result = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) {
+          return AlertDialog(
+            title: const Text('Delete history?', style: TextStyle(fontSize: 17)),
+            content: const Text('This entry and its captured requests will be removed. This cannot be undone.',
+                style: TextStyle(fontSize: 13)),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
+              TextButton(
+                  onPressed: () => Navigator.pop(dialogContext, true),
+                  child: const Text('Delete', style: TextStyle(color: DarkPalette.err))),
+            ],
+          );
+        });
+    return result == true;
+  }
+
+  /// 滑动删除：确认后直接移除，不做选择态处理
+  Future<void> _swipeDelete(HistoryStorage storage, int index) async {
+    setState(() {
+      if (storage.getHistory(index) == widget.historyTask.history) {
+        widget.historyTask.cancelTask();
+      }
+      storage.removeHistory(index);
+    });
+    if (mounted) FlutterToastr.show(AppLocalizations.of(context)!.deleteSuccess, context);
+  }
+
   //构建历史记录
   Widget buildItem(HistoryStorage storage, int index, HistoryItem item) {
     final id = item.stableId.toString();
     final selectionMode = selectionController.isSelectionMode;
 
-    return GestureDetector(
+    final row = GestureDetector(
         onLongPressStart: (detail) async {
           if (Platform.isAndroid) HapticFeedback.mediumImpact();
           //选择态长按直接切换勾选，不弹单条菜单
@@ -355,6 +386,24 @@ class _MobileHistoryState extends State<MobileHistory> {
             toRequestsView(item, storage);
           },
         ));
+
+    return Dismissible(
+      key: ValueKey('history-$id'),
+      direction: DismissDirection.endToStart,
+      confirmDismiss: (_) => _confirmDeleteHistory(),
+      onDismissed: (_) => _swipeDelete(storage, index),
+      background: Container(
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 20),
+        color: DarkPalette.err.withValues(alpha: 0.16),
+        child: const Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+          Icon(Icons.delete_outline, size: 20, color: DarkPalette.err),
+          SizedBox(width: 8),
+          Text('Delete', style: TextStyle(fontSize: 13, color: DarkPalette.err)),
+        ]),
+      ),
+      child: row,
+    );
   }
 
   void toRequestsView(HistoryItem item, HistoryStorage storage) {

@@ -19,6 +19,7 @@ import '../mobile/menu/bottom_navigation.dart';
 import '../mobile/request/request_editor.dart';
 import '../mobile/setting/request_map.dart';
 import 'code_snippet.dart';
+import 'request_detail_tabs.dart';
 
 ///分享按钮
 class ShareWidget extends StatelessWidget {
@@ -154,92 +155,12 @@ class DetailMenuWidget extends StatelessWidget {
         padding: const EdgeInsets.all(0),
         itemBuilder: (context) => [
               PopupMenuItem(
-                  child: Text(localizations.favorite),
-                  onTap: () {
-                    if (request == null) return;
-
-                    FavoriteStorage.addFavorite(request!);
-                    FlutterToastr.show(localizations.addSuccess, context);
-                  }),
-              PopupMenuItem(
-                  child: Text(localizations.copy),
+                  child: const Text("Compose"),
                   onTap: () {
                     WidgetsBinding.instance.addPostFrameCallback((_) {
-                      if (request == null || !context.mounted) {
-                        return;
-                      }
-
-                      showDialog(
-                          context: context,
-                          builder: (dialogContext) {
-                            return AlertDialog(
-                              title: Text(localizations.copy),
-                              content: SingleChildScrollView(
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    ListTile(
-                                      visualDensity: const VisualDensity(vertical: -3),
-                                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-                                      title: Text(localizations.copyRawRequest),
-                                      onTap: () {
-                                        Clipboard.setData(ClipboardData(text: copyRawRequest(request!)));
-                                        Navigator.of(dialogContext).pop();
-                                        FlutterToastr.show(localizations.copied, context);
-                                      },
-                                    ),
-                                    ListTile(
-                                      visualDensity: const VisualDensity(vertical: -3),
-                                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-                                      title: Text(localizations.copyCurl),
-                                      onTap: () {
-                                        Clipboard.setData(ClipboardData(text: curlRequest(request!)));
-                                        Navigator.of(dialogContext).pop();
-                                        FlutterToastr.show(localizations.copied, context);
-                                      },
-                                    ),
-                                    ListTile(
-                                      visualDensity: const VisualDensity(vertical: -3),
-                                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-                                      title: Text(localizations.copyAsPythonRequests),
-                                      onTap: () {
-                                        Clipboard.setData(ClipboardData(text: copyAsPythonRequests(request!)));
-                                        Navigator.of(dialogContext).pop();
-                                        FlutterToastr.show(localizations.copied, context);
-                                      },
-                                    ),
-                                    ListTile(
-                                      visualDensity: const VisualDensity(vertical: -3),
-                                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-                                      title: Text(localizations.copyAsFetch),
-                                      onTap: () {
-                                        Clipboard.setData(ClipboardData(text: copyAsFetch(request!)));
-                                        Navigator.of(dialogContext).pop();
-                                        FlutterToastr.show(localizations.copied, context);
-                                      },
-                                    ),
-                                    // 代码片段：关闭复制菜单后打开代码生成页（目标语言在页内选择）
-                                    ListTile(
-                                      visualDensity: const VisualDensity(vertical: -3),
-                                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-                                      title: const Text("Code snippet…"),
-                                      onTap: () {
-                                        Navigator.of(dialogContext).pop();
-                                        WidgetsBinding.instance.addPostFrameCallback((_) {
-                                          if (request == null || !context.mounted) {
-                                            return;
-                                          }
-
-                                          Navigator.of(context).push(MaterialPageRoute(
-                                              builder: (_) => CodeSnippetPage(request: request!)));
-                                        });
-                                      },
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            );
-                          });
+                      Navigator.of(context).push(MaterialPageRoute(
+                          builder: (context) =>
+                              MobileRequestEditor(request: request, proxyServer: ProxyServer.current)));
                     });
                   }),
               PopupMenuItem(
@@ -334,12 +255,175 @@ class DetailMenuWidget extends StatelessWidget {
                         });
                   }),
               PopupMenuItem(
-                  child: Text(localizations.requestEdit),
+                  child: const Text("Code Snippet"),
                   onTap: () {
                     WidgetsBinding.instance.addPostFrameCallback((_) {
-                      Navigator.of(context).push(MaterialPageRoute(
-                          builder: (context) =>
-                              MobileRequestEditor(request: request, proxyServer: ProxyServer.current)));
+                      if (request == null || !context.mounted) {
+                        return;
+                      }
+                      Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => CodeSnippetPage(request: request!)));
+                    });
+                  }),
+              PopupMenuItem(
+                  child: const Text("Comment"),
+                  onTap: () {
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (request == null || !context.mounted) return;
+                      showDialog(
+                          context: context,
+                          builder: (dialogContext) {
+                            final controller = TextEditingController(text: request!.comment);
+                            return AlertDialog(
+                              title: const Text('Comment', style: TextStyle(fontSize: 17)),
+                              content: TextField(
+                                controller: controller,
+                                maxLines: 3,
+                                style: const TextStyle(fontSize: 13),
+                                decoration: const InputDecoration(
+                                    hintText: 'Add a note to this request', border: OutlineInputBorder()),
+                              ),
+                              actions: [
+                                TextButton(
+                                    onPressed: () => Navigator.pop(dialogContext),
+                                    child: const Text('Cancel')),
+                                TextButton(
+                                    onPressed: () {
+                                      request!.comment = controller.text;
+                                      Navigator.pop(dialogContext);
+                                      FlutterToastr.show('Comment saved', context);
+                                    },
+                                    child: const Text('Save')),
+                              ],
+                            );
+                          });
+                    });
+                  }),
+              PopupMenuItem(
+                  child: const Text("Customize Tabs"),
+                  onTap: () {
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (!context.mounted) return;
+                      showDialog(
+                          context: context,
+                          builder: (dialogContext) {
+                            return AlertDialog(
+                              title: const Text('Customize Tabs', style: TextStyle(fontSize: 17)),
+                              content: StatefulBuilder(
+                                  builder: (ctx, setDialogState) => SingleChildScrollView(
+                                        child: Column(mainAxisSize: MainAxisSize.min, children: [
+                                          for (final tab in RequestDetailTabs.available)
+                                            CheckboxListTile(
+                                              dense: true,
+                                              contentPadding: EdgeInsets.zero,
+                                              value: RequestDetailTabs.enabled.contains(tab),
+                                              title: Text(tab, style: const TextStyle(fontSize: 13)),
+                                              onChanged: (on) => setDialogState(() {
+                                                if (on == true) {
+                                                  RequestDetailTabs.enabled.add(tab);
+                                                } else {
+                                                  RequestDetailTabs.enabled.remove(tab);
+                                                }
+                                              }),
+                                            ),
+                                        ]),
+                                      )),
+                              actions: [
+                                TextButton(
+                                    onPressed: () => Navigator.pop(dialogContext),
+                                    child: const Text('Done')),
+                              ],
+                            );
+                          });
+                    });
+                  }),
+              PopupMenuItem(
+                  child: const Text("Favorite"),
+                  onTap: () {
+                    if (request == null) return;
+
+                    FavoriteStorage.addFavorite(request!);
+                    FlutterToastr.show(localizations.addSuccess, context);
+                  }),
+              PopupMenuItem(
+                  child: Text(localizations.copy),
+                  onTap: () {
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (request == null || !context.mounted) {
+                        return;
+                      }
+
+                      showDialog(
+                          context: context,
+                          builder: (dialogContext) {
+                            return AlertDialog(
+                              title: Text(localizations.copy),
+                              content: SingleChildScrollView(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    ListTile(
+                                      visualDensity: const VisualDensity(vertical: -3),
+                                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                                      title: Text(localizations.copyRawRequest),
+                                      onTap: () {
+                                        Clipboard.setData(ClipboardData(text: copyRawRequest(request!)));
+                                        Navigator.of(dialogContext).pop();
+                                        FlutterToastr.show(localizations.copied, context);
+                                      },
+                                    ),
+                                    ListTile(
+                                      visualDensity: const VisualDensity(vertical: -3),
+                                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                                      title: Text(localizations.copyCurl),
+                                      onTap: () {
+                                        Clipboard.setData(ClipboardData(text: curlRequest(request!)));
+                                        Navigator.of(dialogContext).pop();
+                                        FlutterToastr.show(localizations.copied, context);
+                                      },
+                                    ),
+                                    ListTile(
+                                      visualDensity: const VisualDensity(vertical: -3),
+                                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                                      title: Text(localizations.copyAsPythonRequests),
+                                      onTap: () {
+                                        Clipboard.setData(ClipboardData(text: copyAsPythonRequests(request!)));
+                                        Navigator.of(dialogContext).pop();
+                                        FlutterToastr.show(localizations.copied, context);
+                                      },
+                                    ),
+                                    ListTile(
+                                      visualDensity: const VisualDensity(vertical: -3),
+                                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                                      title: Text(localizations.copyAsFetch),
+                                      onTap: () {
+                                        Clipboard.setData(ClipboardData(text: copyAsFetch(request!)));
+                                        Navigator.of(dialogContext).pop();
+                                        FlutterToastr.show(localizations.copied, context);
+                                      },
+                                    ),
+                                    // 代码片段：关闭复制菜单后打开代码生成页（目标语言在页内选择）
+                                    ListTile(
+                                      visualDensity: const VisualDensity(vertical: -3),
+                                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                                      title: const Text("Code snippet…"),
+                                      onTap: () {
+                                        Navigator.of(dialogContext).pop();
+                                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                                          if (request == null || !context.mounted) {
+                                            return;
+                                          }
+
+                                          Navigator.of(context).push(MaterialPageRoute(
+                                              builder: (_) => CodeSnippetPage(request: request!)));
+                                        });
+                                      },
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          });
                     });
                   }),
               PopupMenuItem(

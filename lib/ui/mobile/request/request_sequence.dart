@@ -242,7 +242,7 @@ class RequestSequenceState extends State<RequestSequence> with AutomaticKeepAliv
                     scrollCacheExtent: ScrollCacheExtent.viewport(2.0),
                     // Reqable 发丝分隔线：0.5dp 实线，无额外留白
                     separatorBuilder: (context, index) =>
-                        const Divider(height: 0.5, thickness: 0.5, color: DarkPalette.divider),
+                        const Divider(height: 1, thickness: 1, color: Color(0xFF414141)),
                     itemCount: view.length,
                     itemBuilder: (context, index) {
                       // 安全边界检查：防止 view 数据变化时索引越界

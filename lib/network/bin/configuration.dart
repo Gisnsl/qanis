@@ -57,8 +57,8 @@ class Configuration {
 
   bool enabledHttp2 = false; // 是否启用http2
 
-  //历史记录缓存时间
-  int historyCacheTime = 0;
+  //历史记录缓存时间（天）：默认保留 30 天，0 = 永久保留
+  int historyCacheTime = 30;
 
   //默认是否启动
   bool startup = false;
@@ -91,7 +91,7 @@ class Configuration {
     enabledHttp2 = config['enabledHttp2'] ?? false;
 
     proxyPassDomains = config['proxyPassDomains'] ?? SystemProxy.proxyPassDomains;
-    historyCacheTime = config['historyCacheTime'] ?? 0;
+    historyCacheTime = config['historyCacheTime'] ?? 30;
     if (config['externalProxy'] != null) {
       externalProxy = ProxyInfo.fromJson(config['externalProxy']);
     }

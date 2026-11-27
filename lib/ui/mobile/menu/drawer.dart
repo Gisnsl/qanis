@@ -34,6 +34,7 @@ import 'package:qanis/ui/mobile/setting/request_map.dart';
 import 'package:qanis/ui/mobile/menu/bottom_navigation.dart';
 import 'package:qanis/ui/mobile/menu/codec_hub.dart';
 import 'package:qanis/ui/toolbox/toolbox.dart';
+import 'package:qanis/ui/component/svg_icon.dart';
 import 'package:qanis/ui/component/utils.dart';
 import 'package:qanis/ui/configuration.dart';
 import 'package:qanis/ui/mobile/setting/preference.dart';
@@ -130,7 +131,7 @@ class _DrawerWidgetState extends State<DrawerWidget> {
             if (_tabsExpanded)
               ..._withHairlines([
                 _DrawerItem(
-                  icon: Icons.timeline,
+                  icon: 'list',
                   label: '${isCN ? '流量' : 'Traffic'} (${widget.container.length})',
                   active: true,
                   showDot: true,
@@ -146,12 +147,12 @@ class _DrawerWidgetState extends State<DrawerWidget> {
             if (_toolsExpanded)
               ..._withHairlines([
                 _DrawerItem(
-                  icon: Icons.favorite_border,
+                  icon: 'favorite',
                   label: localizations.favorites,
                   onTap: () => navigator(context, MobileFavorites(proxyServer: widget.proxyServer)),
                 ),
                 _DrawerItem(
-                  icon: Icons.history,
+                  icon: 'history',
                   label: localizations.history,
                   onTap: () => navigator(
                       context,
@@ -161,12 +162,12 @@ class _DrawerWidgetState extends State<DrawerWidget> {
                           historyTask: historyTask)),
                 ),
                 _DrawerItem(
-                  icon: Icons.swap_horiz,
+                  icon: 'encode',
                   label: isCN ? '编解码' : 'Encode / Decode',
                   onTap: () => navigator(context, const CodecHubPage()),
                 ),
                 _DrawerItem(
-                  icon: Icons.construction,
+                  icon: 'wrench',
                   label: localizations.toolbox,
                   onTap: () => Navigator.of(context).push(
                     MaterialPageRoute(builder: (BuildContext context) {
@@ -177,17 +178,17 @@ class _DrawerWidgetState extends State<DrawerWidget> {
                   ),
                 ),
                 _DrawerItem(
-                  icon: widget.proxyServer.enableSsl ? Icons.lock_open : Icons.https,
+                  icon: widget.proxyServer.enableSsl ? 'lock' : 'ssl',
                   label: localizations.httpsProxy,
                   onTap: () => navigator(context, MobileSslWidget(proxyServer: widget.proxyServer)),
                 ),
                 _DrawerItem(
-                  icon: Icons.filter_alt_outlined,
+                  icon: 'funnel',
                   label: localizations.filter,
                   onTap: () => navigator(context, FilterMenu(proxyServer: widget.proxyServer)),
                 ),
                 _DrawerItem(
-                  icon: Icons.domain,
+                  icon: 'group_host',
                   label: localizations.hosts,
                   onTap: () async {
                     var hostsManager = await HostsManager.instance;
@@ -197,7 +198,7 @@ class _DrawerWidgetState extends State<DrawerWidget> {
                   },
                 ),
                 _DrawerItem(
-                  icon: Icons.block_flipped,
+                  icon: 'block',
                   label: localizations.requestBlock,
                   onTap: () async {
                     var requestBlockManager = await RequestBlockManager.instance;
@@ -207,7 +208,7 @@ class _DrawerWidgetState extends State<DrawerWidget> {
                   },
                 ),
                 _DrawerItem(
-                  icon: Icons.edit_outlined,
+                  icon: 'compose',
                   label: localizations.requestRewrite,
                   onTap: () async {
                     var requestRewrites = await RequestRewriteManager.instance;
@@ -217,22 +218,22 @@ class _DrawerWidgetState extends State<DrawerWidget> {
                   },
                 ),
                 _DrawerItem(
-                  icon: Icons.swap_horiz_outlined,
+                  icon: 'swap',
                   label: localizations.requestMap,
                   onTap: () => navigator(context, MobileRequestMapPage()),
                 ),
                 _DrawerItem(
-                  icon: Icons.lock_outline,
+                  icon: 'key',
                   label: localizations.requestCrypto,
                   onTap: () => navigator(context, const MobileRequestCryptoPage()),
                 ),
                 _DrawerItem(
-                  icon: Icons.code,
+                  icon: 'code',
                   label: localizations.script,
                   onTap: () => navigator(context, const MobileScript()),
                 ),
                 _DrawerItem(
-                  icon: Icons.bug_report_outlined,
+                  icon: 'breakpoint',
                   label: localizations.breakpoint,
                   onTap: () async {
                     var manager = await RequestBreakpointManager.instance;
@@ -244,12 +245,12 @@ class _DrawerWidgetState extends State<DrawerWidget> {
                 // 弱网模拟：沿用原有组件，行为不变
                 const WeakNetworkMenuTile(),
                 _DrawerItem(
-                  icon: Icons.public,
+                  icon: 'globe',
                   label: localizations.environmentVariables,
                   onTap: () => navigator(context, const MobileEnvironmentPage()),
                 ),
                 _DrawerItem(
-                  icon: Icons.smart_toy_outlined,
+                  icon: 'mcp',
                   label: localizations.mcpService,
                   onTap: () => navigator(context, MobileMcpSetting(proxyServer: widget.proxyServer)),
                 ),
@@ -263,12 +264,12 @@ class _DrawerWidgetState extends State<DrawerWidget> {
             if (_othersExpanded)
               ..._withHairlines([
                 _DrawerItem(
-                  icon: Icons.tune,
+                  icon: 'sliders',
                   label: localizations.config,
                   onTap: () => navigator(context, ConfigPage(proxyServer: widget.proxyServer)),
                 ),
                 _DrawerItem(
-                  icon: Icons.settings_outlined,
+                  icon: 'gear',
                   label: localizations.setting,
                   onTap: () => navigator(
                       context,
@@ -278,7 +279,7 @@ class _DrawerWidgetState extends State<DrawerWidget> {
                               proxyServer: widget.proxyServer, appConfiguration: appConfiguration))),
                 ),
                 _DrawerItem(
-                  icon: Icons.info_outline,
+                  icon: 'info',
                   label: localizations.about,
                   onTap: () => navigator(context, const About()),
                 ),
@@ -445,9 +446,10 @@ class _SectionHeader extends StatelessWidget {
   }
 }
 
-/// 导航行：20dp 图标 + 14sp 文本，50dp 高，选中时左侧 2dp 琥珀条
+/// 导航行：20dp 单色 SVG 图标 + 14sp 文本，54dp 高，选中时左侧 2dp 琥珀条
 class _DrawerItem extends StatelessWidget {
-  final IconData icon;
+  /// assets/icons/<name>.svg 的名称（单色线条图标集）
+  final String icon;
   final String label;
   final VoidCallback onTap;
   final bool active;
@@ -468,7 +470,7 @@ class _DrawerItem extends StatelessWidget {
       splashColor: Colors.transparent,
       highlightColor: DarkPalette.hoverWeak,
       child: SizedBox(
-        height: 50,
+        height: 54,
         child: Stack(
           children: [
             if (active)
@@ -482,8 +484,9 @@ class _DrawerItem extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Row(
                 children: [
-                  Icon(icon, size: 20, color: active ? DarkPalette.primary : DarkPalette.text2),
-                  const SizedBox(width: 14),
+                  SvgIcon(icon,
+                      size: 20, color: active ? DarkPalette.primary : DarkPalette.text2),
+                  const SizedBox(width: 12),
                   Expanded(
                     child: Text(label,
                         maxLines: 1,

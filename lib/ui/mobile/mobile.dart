@@ -27,6 +27,7 @@ import 'package:qanis/native/vpn.dart';
 import 'package:qanis/network/bin/configuration.dart';
 import 'package:qanis/network/bin/listener.dart';
 import 'package:qanis/network/bin/server.dart';
+import 'package:qanis/network/util/crts.dart';
 import 'package:qanis/network/channel/channel.dart';
 import 'package:qanis/network/channel/channel_context.dart';
 import 'package:qanis/network/http/http.dart';
@@ -482,6 +483,7 @@ class RequestPageState extends State<RequestPage> {
             builder: (context, value, _) {
               return Column(children: [
                 value.connect ? remoteConnect(value) : const SizedBox(),
+                enableSslBar(),
                 Expanded(
                     child: RequestListWidget(
                         key: MobileApp.requestStateKey,
@@ -502,10 +504,10 @@ class RequestPageState extends State<RequestPage> {
     return ValueListenableBuilder<ValueWrap<bool>>(
         valueListenable: SocketLaunch.startStatus,
         builder: (context, status, _) {
-          // 46px 正圆右下悬浮（设计稿 .p-fab）；Reqable 琥珀主色，无阴影
+          // 64px 正圆右下悬浮：比设计稿放大，方便单手点按；Reqable 琥珀主色，无阴影
           return SizedBox(
-            width: 46,
-            height: 46,
+            width: 64,
+            height: 64,
             child: FloatingActionButton(
               onPressed: null,
               shape: const CircleBorder(),
@@ -518,7 +520,7 @@ class RequestPageState extends State<RequestPage> {
               splashColor: DarkPalette.hover,
               child: SocketLaunch(
                 proxyServer: proxyServer,
-                size: 22,
+                size: 30,
               startup: proxyServer.configuration.startup,
               serverLaunch: false,
               onStart: () async {
@@ -539,6 +541,42 @@ class RequestPageState extends State<RequestPage> {
             ),
           );
         });
+  }
+
+  /// HTTPS 解密开关条：未开启时显示，点击即开启并从界面消失
+  Widget enableSslBar() {
+    if (proxyServer.enableSsl) {
+      return const SizedBox();
+    }
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 8, 12, 2),
+      height: 46,
+      child: Material(
+        color: DarkPalette.primary,
+        borderRadius: BorderRadius.circular(8),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: () {
+            proxyServer.enableSsl = true;
+            proxyServer.configuration.flushConfig();
+            CertificateManager.cleanCache();
+            setState(() {});
+          },
+          child: const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 14),
+            child: Row(children: [
+              Icon(Icons.lock_outline, size: 18, color: Color(0xFF1E1E1E)),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text('Enhanced mode',
+                    style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: Color(0xFF1E1E1E))),
+              ),
+              Icon(Icons.chevron_right, size: 18, color: Color(0xFF1E1E1E)),
+            ]),
+          ),
+        ),
+      ),
+    );
   }
 
   /// 远程连接

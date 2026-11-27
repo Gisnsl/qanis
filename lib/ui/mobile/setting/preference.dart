@@ -1,6 +1,9 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_toastr/flutter_toastr.dart';
+import 'package:qanis/storage/histories.dart';
+import 'package:qanis/ui/component/utils.dart';
 import 'package:flutter/services.dart';
 import 'package:qanis/l10n/app_localizations.dart';
 import 'package:qanis/network/bin/configuration.dart';
@@ -69,6 +72,37 @@ class _PreferenceState extends State<Preference> {
           padding: const EdgeInsets.all(12),
           children: [
             section([
+              ListTile(
+                title: const Text('Clear Cache'),
+                subtitle: const Text('Deletes saved history and captured bodies. Settings are kept.',
+                    style: TextStyle(fontSize: 11)),
+                trailing: const Icon(Icons.delete_sweep_outlined, size: 18),
+                onTap: () async {
+                  final ok = await showDialog<bool>(
+                      context: context,
+                      builder: (dialogContext) => AlertDialog(
+                            title: const Text('Clear cache?', style: TextStyle(fontSize: 17)),
+                            content: const Text(
+                                'All saved history entries and their captured requests will be deleted. '
+                                'Your settings, certificates and rules are not affected.',
+                                style: TextStyle(fontSize: 13)),
+                            actions: [
+                              TextButton(
+                                  onPressed: () => Navigator.pop(dialogContext, false),
+                                  child: const Text('Cancel')),
+                              TextButton(
+                                  onPressed: () => Navigator.pop(dialogContext, true),
+                                  child: const Text('Clear', style: TextStyle(color: DarkPalette.err))),
+                            ],
+                          ));
+                  if (ok != true || !mounted) return;
+                  final storage = await HistoryStorage.instance;
+                  while (storage.histories.isNotEmpty) {
+                    await storage.removeHistory(0);
+                  }
+                  if (mounted) FlutterToastr.show('Cache cleared', context);
+                },
+              ),
               ListTile(
                 title: Text(localizations.language),
                 trailing: const Icon(Icons.arrow_forward_ios, size: 16),
@@ -200,14 +234,14 @@ class _PreferenceState extends State<Preference> {
                       appConfiguration.language = const Locale.fromSubtags(languageCode: 'zh');
                       Navigator.of(context).pop();
                     },
-                    child: const Text("简体中文")),
+                    child: const Text("Simplified Chinese")),
                 const Divider(thickness: 0.5, height: 0),
                 TextButton(
                     onPressed: () {
                       appConfiguration.language = const Locale.fromSubtags(languageCode: 'zh', scriptCode: 'Hant');
                       Navigator.of(context).pop();
                     },
-                    child: const Text("繁體中文")),
+                    child: const Text("Traditional Chinese")),
                 const Divider(thickness: 0.5, height: 0),
                 TextButton(
                     onPressed: () {

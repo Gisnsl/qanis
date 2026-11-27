@@ -21,6 +21,7 @@ import 'package:qanis/l10n/app_localizations.dart';
 import 'package:qanis/ui/component/utils.dart';
 
 import '../../app_update/app_update_repository.dart';
+import 'donate.dart';
 
 /// 关于
 class About extends StatefulWidget {
@@ -41,8 +42,8 @@ class _AboutState extends State<About> {
     final bool isCN = Localizations.localeOf(context) == const Locale.fromSubtags(languageCode: 'zh');
 
     String gitHub = "https://github.com/wanghongenpin/proxypin";
-    final String sponsorUrl = "https://github.com/sponsors/wanghongenpin";
     final String downloadUrl = isCN ? "https://gitee.com/wanghongenpin/proxypin/releases" : "$gitHub/releases";
+    const String developerUrl = "https://t.me/maho_s9";
 
     // QANIS brand accent: amber #E8A33D (DarkPalette.warn), darkened for light backgrounds.
     final Color brandColor =
@@ -132,9 +133,31 @@ class _AboutState extends State<About> {
                   title: Text(localizations.sponsorDonate),
                   subtitle: Text(localizations.sponsorSupport, style: const TextStyle(fontSize: 12)),
                   trailing: const Icon(Icons.favorite, color: Colors.redAccent, size: 22),
-                  onTap: () => _showSponsorDialog(localizations, sponsorUrl),
+                  onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const DonatePage())),
                 ),
-              ]))
+              ])),
+          const SizedBox(height: 12),
+          // Developer block
+          Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                  color: DarkPalette.panel,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: DarkPalette.divider, width: 0.5)),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Text("Developer", style: TextStyle(fontSize: 12, color: DarkPalette.text2)),
+                const SizedBox(height: 6),
+                const Text("Ahmed Alhrrani", style: TextStyle(fontSize: 14, color: DarkPalette.text1)),
+                const SizedBox(height: 4),
+                InkWell(
+                    borderRadius: BorderRadius.circular(6),
+                    onTap: () => _safeLaunch(Uri.parse(developerUrl)),
+                    child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 3),
+                        child: Text(developerUrl,
+                            style: const TextStyle(fontSize: 13, color: DarkPalette.primary)))),
+              ])),
+          const SizedBox(height: 12),
         ]));
   }
 
@@ -142,49 +165,4 @@ class _AboutState extends State<About> {
     await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
-  void _showSponsorDialog(AppLocalizations l10n, String sponsorUrl) {
-    bool isCN = Localizations.localeOf(context) == const Locale.fromSubtags(languageCode: 'zh');
-
-    List<Widget> sponsors = [
-      ListTile(
-        onTap: () => _safeLaunch(Uri.parse("https://afdian.com/a/proxypin")),
-        contentPadding: EdgeInsets.zero,
-        leading: const Icon(Icons.favorite, color: Colors.pinkAccent),
-        title: Text(l10n.sponsorAfdian),
-      )
-    ];
-
-    final coffee = ListTile(
-      contentPadding: EdgeInsets.zero,
-      leading: const Icon(Icons.coffee, color: Colors.brown),
-      title: Text('Buy Me a Coffee'),
-      onTap: () => _safeLaunch(Uri.parse("https://buymeacoffee.com/proxypin")),
-    );
-    if (isCN) {
-      sponsors.add(coffee);
-    } else {
-      sponsors.insert(0, coffee);
-    }
-
-    showDialog(
-      context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          title: Text(l10n.sponsorDonate),
-          contentPadding: const EdgeInsets.only(left: 20, top: 10, right: 20, bottom: 10),
-          content: SizedBox(
-            width: 340,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [Text(l10n.sponsorThanks), const SizedBox(height: 12), ...sponsors],
-            ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.of(ctx).pop(), child: Text(l10n.close)),
-          ],
-        );
-      },
-    );
-  }
 }
