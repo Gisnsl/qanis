@@ -23,8 +23,13 @@
 ///   一律丢弃。
 /// * JSON body 解析成功时输出真正的对象/字典/结构体，否则输出原始文本；
 ///   `application/x-www-form-urlencoded` 在支持的语言里输出表单字典。
-/// * 二进制 body（multipart 文件等）无法还原成文本，输出 `<binary body: N bytes>`
-///   占位（cURL 输出 `--data-binary '@body.bin'`），需要用户自行补上文件。
+/// * 二进制 body（multipart 文件等）无法还原成文本，改为输出该语言的字节字面量
+///   （见 [_bytesLiteral]），最多前 [_kMaxBinaryBytes] 字节，超出部分用注释标注
+///   原始总长度，避免一个 5 MB 的上传生成 20 MB 的代码片段。
+/// * JSON body 解析成功时：调用序列化器的目标一定同时输出它的 import，并且把
+///   结构化对象传给客户端的 JSON 参数（`json=` / 对象形式的 `data:` /
+///   `JSON.stringify` + 显式 `Content-Type: application/json`），
+///   不再把原始字符串塞进 `data=`。
 /// * 所有目标都带超时，并在结尾打印状态码与响应体。
 ///
 /// 语言版本假设：Java 15+（文本块）、OkHttp 4+、Kotlin 1.5+、
@@ -33,6 +38,7 @@
 library;
 
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:qanis/network/http/http.dart';
 
@@ -143,6 +149,12 @@ class _Header {
   const _Header(this.name, this.value);
 }
 
+/// 把 [HttpRequest.body] 收窄成 [Uint8List]；已经是该类型时不复制。
+Uint8List? _asBytes(List<int>? value) {
+  if (value == null) return null;
+  return value is Uint8List ? value : Uint8List.fromList(value);
+}
+
 /// 这些头由客户端自动生成，或者只对代理链路有意义，生成代码时一律丢弃。
 const Set<String> _kDroppedHeaders = {
   'content-length',
@@ -175,6 +187,12 @@ class _Ctx {
   /// body 是否为不可读的二进制（此时 [body] 只是占位文本）。
   final bool binary;
 
+  /// 原始请求体字节；无 body 时为 null。二进制 body 靠它还原成字节字面量。
+  ///
+  /// 文本 body 时它同样是原始字节，但只有 [binary] 为 true 时才应据此生成
+  /// 字节字面量（见 [_bytesLiteral]）。
+  final Uint8List? rawBytes;
+
   /// JSON body 解析后的对象；不是 JSON 或解析失败时为 null。
   final Object? json;
 
@@ -190,6 +208,7 @@ class _Ctx {
     required this.headers,
     required this.body,
     required this.binary,
+    required this.rawBytes,
     required this.json,
     required this.form,
     required this.isJson,
@@ -258,6 +277,7 @@ class _Ctx {
           ? null
           : (binary ? '<binary body: ${rawBytes.length} bytes>' : text),
       binary: binary,
+      rawBytes: _asBytes(rawBytes),
       json: json,
       form: form,
       isJson: isJson,
@@ -370,6 +390,95 @@ String _indentRest(String text, String pad) {
 
 String _prettyJson(Object? value) =>
     const JsonEncoder.withIndent('  ').convert(value);
+
+// ---------------------------------------------------------------------------
+// 二进制 body 的字节字面量
+// ---------------------------------------------------------------------------
+
+/// 字节字面量最多输出的字节数：超过这个长度的 body 只输出前缀。
+const int _kMaxBinaryBytes = 512;
+
+/// 生成 [language] 中表示 [bytes] 的字节字面量。
+///
+/// 只取前 [_kMaxBinaryBytes] 字节；被截断时由调用方通过 [_writeTruncNote]
+/// 追加一行注释说明原始长度。各语言的写法：
+///
+/// * `python` → `b'\x76\x0b'`
+/// * `js` → `Buffer.from('760b', 'hex')`
+/// * `java` → `new byte[]{0x76, 0x0b}`
+/// * `kotlin` → `byteArrayOf(0x76.toByte(), 0x0b.toByte())`
+/// * `go` → `[]byte{0x76, 0x0b}`
+/// * `rust` → `&[0x76u8, 0x0bu8]`
+/// * `php` → `"\x76\x0b"`
+/// * `csharp` → `new byte[] { 0x76, 0x0b }`
+/// * `dart` → `Uint8List.fromList([0x76, 0x0b])`
+/// * `swift` → `Data([0x76, 0x0b])`
+/// * `ruby` → `"\x76\x0b".b`
+/// * `shell` → `$'\x76\x0b'`（bash ANSI-C 引用；进程参数里不能出现 0x00，
+///   含 NUL 的 body 只能读到第一个 NUL 之前）
+/// * `powershell` → `[byte[]]@(0x76, 0x0b)`
+/// * `http` → `\x76\x0b`（原始 HTTP 没有字面量语法，只能转义）
+String _bytesLiteral(String language, Uint8List bytes) {
+  final slice = bytes.length > _kMaxBinaryBytes
+      ? Uint8List.sublistView(bytes, 0, _kMaxBinaryBytes)
+      : bytes;
+  final hex = <String>[
+    for (final byte in slice) byte.toRadixString(16).padLeft(2, '0')
+  ];
+  final escaped = hex.map((h) => r'\x' + h).join();
+  final prefixed = hex.map((h) => '0x$h').join(', ');
+  final rustItems = hex.map((h) => '0x${h}u8').join(', ');
+
+  switch (language) {
+    case 'python':
+      return "b'$escaped'";
+    case 'js':
+      return "Buffer.from('${hex.join()}', 'hex')";
+    case 'java':
+      return 'new byte[]{$prefixed}';
+    case 'kotlin':
+      return 'byteArrayOf(${hex.map((h) => '0x$h.toByte()').join(', ')})';
+    case 'go':
+      return '[]byte{$prefixed}';
+    case 'rust':
+      return '&[$rustItems]';
+    case 'php':
+      return '"$escaped"';
+    case 'csharp':
+      return 'new byte[] { $prefixed }';
+    case 'dart':
+      return 'Uint8List.fromList([$prefixed])';
+    case 'swift':
+      return 'Data([$prefixed])';
+    case 'ruby':
+      return '"$escaped".b';
+    case 'shell':
+      return "\$'$escaped'";
+    case 'powershell':
+      return '[byte[]]@($prefixed)';
+    case 'http':
+      return escaped;
+    default:
+      return prefixed;
+  }
+}
+
+/// 字节字面量被截断时的注释行；没有注释语法的目标返回 null。
+String? _truncComment(String language, int total) {
+  if (total <= _kMaxBinaryBytes) return null;
+  if (language == 'http') return null;
+  final prefix =
+      const {'python', 'ruby', 'shell', 'powershell'}.contains(language)
+          ? '#'
+          : '//';
+  return '$prefix truncated: $total bytes total';
+}
+
+/// 把截断注释写进 [sb]，[pad] 为缩进；未截断时不写任何内容。
+void _writeTruncNote(StringBuffer sb, String language, int total, String pad) {
+  final note = _truncComment(language, total);
+  if (note != null) sb.writeln('$pad$note');
+}
 
 // ---------------------------------------------------------------------------
 // 字符串转义
@@ -723,7 +832,9 @@ String _curl(_Ctx ctx) {
 
   if (ctx.body != null) {
     if (ctx.binary) {
-      lines.add("  --data-binary '@body.bin'");
+      // shell 里只能用 ANSI-C 引用写出真实字节；注释行不能挂在续行链上，
+      // 否则会把后面的 --max-time 一起注释掉，故最后单独追加。
+      lines.add('  --data-binary ${_bytesLiteral('shell', ctx.rawBytes!)}');
     } else {
       lines.add('  --data-raw ${_shellQuote(ctx.jsonText)}');
     }
@@ -731,7 +842,9 @@ String _curl(_Ctx ctx) {
 
   lines.add('  --max-time 30');
 
-  return '${lines.join(' \\\n')}\n';
+  final out = StringBuffer('${lines.join(' \\\n')}\n');
+  if (ctx.binary) _writeTruncNote(out, 'shell', ctx.rawBytes!.length, '');
+  return out.toString();
 }
 
 // ---------------------------------------------------------------------------
@@ -747,8 +860,15 @@ String _httpie(_Ctx ctx) {
     lines.add('  ${_shellQuote('${header.name}: ${header.value}')}');
   }
 
-  if (ctx.body == null || ctx.binary) {
+  if (ctx.body == null) {
     return '${lines.join(' \\\n')}\n';
+  }
+
+  if (ctx.binary) {
+    lines.add('  --raw ${_bytesLiteral('shell', ctx.rawBytes!)}');
+    final out = StringBuffer('${lines.join(' \\\n')}\n');
+    _writeTruncNote(out, 'shell', ctx.rawBytes!.length, '');
+    return out.toString();
   }
 
   lines[lines.length - 1] = "${lines.last} <<'BODY'";
@@ -798,6 +918,11 @@ String _pythonRequests(_Ctx ctx) {
     bodyArg = 'json=payload';
   } else if (ctx.form != null) {
     sb.writeln('payload = ${_formatLiteral(ctx.form, _pythonSyntax)}');
+    sb.writeln();
+    bodyArg = 'data=payload';
+  } else if (ctx.binary) {
+    sb.writeln('payload = ${_bytesLiteral('python', ctx.rawBytes!)}');
+    _writeTruncNote(sb, 'python', ctx.rawBytes!.length, '');
     sb.writeln();
     bodyArg = 'data=payload';
   } else if (ctx.body != null) {
@@ -862,6 +987,10 @@ String _pythonHttpClient(_Ctx ctx) {
     sb.writeln(
         'payload = urllib.parse.urlencode(${_formatLiteral(ctx.form, _pythonSyntax)})');
     sb.writeln();
+  } else if (ctx.binary) {
+    sb.writeln('payload = ${_bytesLiteral('python', ctx.rawBytes!)}');
+    _writeTruncNote(sb, 'python', ctx.rawBytes!.length, '');
+    sb.writeln();
   } else if (ctx.body != null) {
     sb.writeln('payload = ${_sq(ctx.body!)}');
     sb.writeln();
@@ -917,6 +1046,11 @@ String _pythonHttpx(_Ctx ctx) {
     sb.writeln('payload = ${_formatLiteral(ctx.form, _pythonSyntax)}');
     sb.writeln();
     bodyArg = 'data=payload';
+  } else if (ctx.binary) {
+    sb.writeln('payload = ${_bytesLiteral('python', ctx.rawBytes!)}');
+    _writeTruncNote(sb, 'python', ctx.rawBytes!.length, '');
+    sb.writeln();
+    bodyArg = 'content=payload';
   } else if (ctx.body != null) {
     sb.writeln('payload = ${_sq(ctx.body!)}');
     sb.writeln();
@@ -983,6 +1117,11 @@ String _pythonAiohttp(_Ctx ctx) {
         '    payload = ${_indentRest(_formatLiteral(ctx.form, _pythonSyntax), '    ')}');
     sb.writeln();
     bodyArg = 'data=payload';
+  } else if (ctx.binary) {
+    sb.writeln('    payload = ${_bytesLiteral('python', ctx.rawBytes!)}');
+    _writeTruncNote(sb, 'python', ctx.rawBytes!.length, '    ');
+    sb.writeln();
+    bodyArg = 'data=payload';
   } else if (ctx.body != null) {
     sb.writeln('    payload = ${_sq(ctx.body!)}');
     sb.writeln();
@@ -1015,12 +1154,22 @@ String _pythonAiohttp(_Ctx ctx) {
 
 String _nodeFetch(_Ctx ctx) {
   final sb = StringBuffer();
-  final structured = ctx.json != null || ctx.form != null;
-  final headers = structured
-      ? ctx.headers
-          .where((h) => h.name.toLowerCase() != 'content-type')
-          .toList()
-      : ctx.headers;
+  // node-fetch 不会替 String body 补 Content-Type：JSON 必须显式声明，
+  // 否则服务端按 text/plain 解析。URLSearchParams 由库自己设置 content-type，
+  // 所以只对它丢弃原始头。
+  final List<_Header> headers;
+  if (ctx.json != null) {
+    headers = ctx.headers.toList();
+    if (_headerValue(ctx, 'content-type') == null) {
+      headers.add(const _Header('Content-Type', 'application/json'));
+    }
+  } else if (ctx.form != null) {
+    headers = ctx.headers
+        .where((h) => h.name.toLowerCase() != 'content-type')
+        .toList();
+  } else {
+    headers = ctx.headers;
+  }
 
   sb.writeln("import fetch from 'node-fetch';");
   sb.writeln();
@@ -1048,6 +1197,11 @@ String _nodeFetch(_Ctx ctx) {
     sb.writeln('});');
     sb.writeln();
     bodyLine = 'body,';
+  } else if (ctx.binary) {
+    sb.writeln('const payload = ${_bytesLiteral('js', ctx.rawBytes!)};');
+    _writeTruncNote(sb, 'js', ctx.rawBytes!.length, '');
+    sb.writeln();
+    bodyLine = 'body: payload,';
   } else if (ctx.body != null) {
     sb.writeln('const body = ${_q(ctx.body!)};');
     sb.writeln();
@@ -1106,6 +1260,11 @@ String _nodeAxios(_Ctx ctx) {
     sb.writeln('});');
     sb.writeln();
     dataLine = 'data: payload,';
+  } else if (ctx.binary) {
+    sb.writeln('const payload = ${_bytesLiteral('js', ctx.rawBytes!)};');
+    _writeTruncNote(sb, 'js', ctx.rawBytes!.length, '');
+    sb.writeln();
+    dataLine = 'data: payload,';
   } else if (ctx.body != null) {
     sb.writeln('const payload = ${_q(ctx.body!)};');
     sb.writeln();
@@ -1135,7 +1294,7 @@ String _nodeNative(_Ctx ctx) {
   final uri = ctx.uri;
   final secure = uri.scheme != 'http';
   final module = secure ? 'https' : 'http';
-  final hasBody = ctx.body != null && !ctx.binary;
+  final hasBody = ctx.body != null;
 
   sb.writeln("const $module = require('$module');");
   sb.writeln();
@@ -1143,7 +1302,11 @@ String _nodeNative(_Ctx ctx) {
 
   if (hasBody) {
     sb.writeln();
-    if (ctx.json != null) {
+    if (ctx.binary) {
+      sb.writeln('const payload = ${_bytesLiteral('js', ctx.rawBytes!)};');
+      _writeTruncNote(sb, 'js', ctx.rawBytes!.length, '');
+      sb.writeln('const body = payload;');
+    } else if (ctx.json != null) {
       sb.writeln('const payload = ${_prettyJson(ctx.json)};');
       sb.writeln('const body = JSON.stringify(payload);');
     } else {
@@ -1207,7 +1370,10 @@ String _rustReqwest(_Ctx ctx) {
       : ctx.headers;
 
   sb.writeln('use reqwest::header::{HeaderMap, HeaderValue};');
-  if (ctx.json != null) sb.writeln('use serde_json::json;');
+  // json! 也用于 form body，只要调用宏就必须带上 import。
+  if (ctx.json != null || ctx.form != null) {
+    sb.writeln('use serde_json::json;');
+  }
   sb.writeln('use std::time::Duration;');
   sb.writeln();
   sb.writeln('#[tokio::main]');
@@ -1227,6 +1393,10 @@ String _rustReqwest(_Ctx ctx) {
   } else if (ctx.form != null) {
     sb.writeln(
         '    let payload = json!(${_indentRest(_prettyJson(ctx.form), '    ')});');
+    sb.writeln();
+  } else if (ctx.binary) {
+    sb.writeln('    let payload: &[u8] = ${_bytesLiteral('rust', ctx.rawBytes!)};');
+    _writeTruncNote(sb, 'rust', ctx.rawBytes!.length, '    ');
     sb.writeln();
   } else if (ctx.body != null) {
     sb.writeln('    let payload = ${_rustStr(ctx.body!)};');
@@ -1272,7 +1442,7 @@ String _rustReqwest(_Ctx ctx) {
 
 String _rustUreq(_Ctx ctx) {
   final sb = StringBuffer();
-  final hasBody = ctx.body != null && !ctx.binary;
+  final hasBody = ctx.body != null;
 
   sb.writeln('use std::time::Duration;');
   sb.writeln();
@@ -1300,7 +1470,11 @@ String _rustUreq(_Ctx ctx) {
   }
   sb.writeln();
 
-  if (hasBody) {
+  if (ctx.binary) {
+    sb.writeln('    let result = request'
+        '.send_bytes(${_bytesLiteral('rust', ctx.rawBytes!)});');
+    _writeTruncNote(sb, 'rust', ctx.rawBytes!.length, '    ');
+  } else if (hasBody) {
     sb.writeln(
         '    let result = request.send_string(${_rustRaw(ctx.jsonText)});');
   } else {
@@ -1331,7 +1505,7 @@ String _rustUreq(_Ctx ctx) {
 
 String _goNetHttp(_Ctx ctx) {
   final sb = StringBuffer();
-  final hasBody = ctx.body != null && !ctx.binary;
+  final hasBody = ctx.body != null;
   final hasJson = ctx.json != null;
   final hasForm = ctx.form != null;
 
@@ -1366,6 +1540,10 @@ String _goNetHttp(_Ctx ctx) {
     sb.writeln('    }');
     sb.writeln();
     sb.writeln('    body := []byte(payload.Encode())');
+    sb.writeln();
+  } else if (ctx.binary) {
+    sb.writeln('    body := ${_bytesLiteral('go', ctx.rawBytes!)}');
+    _writeTruncNote(sb, 'go', ctx.rawBytes!.length, '    ');
     sb.writeln();
   } else if (hasBody) {
     if (ctx.body!.contains('`')) {
@@ -1436,10 +1614,20 @@ String _javaOkHttp(_Ctx ctx) {
   sb.writeln('                .build();');
   sb.writeln();
 
-  final mediaType =
-      contentType ?? (ctx.body != null ? 'text/plain; charset=utf-8' : null);
+  final mediaType = contentType ??
+      (ctx.binary
+          ? 'application/octet-stream'
+          : (ctx.body != null ? 'text/plain; charset=utf-8' : null));
   String bodyExpr;
-  if (ctx.body != null && !ctx.binary) {
+  if (ctx.binary) {
+    sb.writeln(
+        '        MediaType mediaType = MediaType.parse(${_q(mediaType!)});');
+    sb.writeln(
+        '        byte[] payload = ${_bytesLiteral('java', ctx.rawBytes!)};');
+    _writeTruncNote(sb, 'java', ctx.rawBytes!.length, '        ');
+    sb.writeln();
+    bodyExpr = 'RequestBody.create(payload, mediaType)';
+  } else if (ctx.body != null) {
     if (mediaType != null) {
       sb.writeln(
           '        MediaType mediaType = MediaType.parse(${_q(mediaType)});');
@@ -1481,7 +1669,7 @@ String _javaOkHttp(_Ctx ctx) {
 
 String _javaHttpClient(_Ctx ctx) {
   final sb = StringBuffer();
-  final hasBody = ctx.body != null && !ctx.binary;
+  final hasBody = ctx.body != null;
 
   sb.writeln('import java.net.URI;');
   sb.writeln('import java.net.http.HttpClient;');
@@ -1497,7 +1685,12 @@ String _javaHttpClient(_Ctx ctx) {
   sb.writeln('                .build();');
   sb.writeln();
 
-  if (hasBody) {
+  if (ctx.binary) {
+    sb.writeln(
+        '        byte[] payload = ${_bytesLiteral('java', ctx.rawBytes!)};');
+    _writeTruncNote(sb, 'java', ctx.rawBytes!.length, '        ');
+    sb.writeln();
+  } else if (hasBody) {
     sb.writeln(
         '        String payload = ${_javaBlock(ctx.jsonText, '        ')};');
     sb.writeln();
@@ -1510,9 +1703,11 @@ String _javaHttpClient(_Ctx ctx) {
     sb.writeln(
         '                .header(${_q(header.name)}, ${_q(header.value)})');
   }
-  final publisher = hasBody
-      ? 'HttpRequest.BodyPublishers.ofString(payload)'
-      : 'HttpRequest.BodyPublishers.noBody()';
+  final publisher = ctx.binary
+      ? 'HttpRequest.BodyPublishers.ofByteArray(payload)'
+      : hasBody
+          ? 'HttpRequest.BodyPublishers.ofString(payload)'
+          : 'HttpRequest.BodyPublishers.noBody()';
   sb.writeln('                .method(${_q(ctx.method)}, $publisher)');
   sb.writeln('                .build();');
   sb.writeln();
@@ -1536,8 +1731,9 @@ String _kotlinOkHttp(_Ctx ctx) {
   final sb = StringBuffer();
   final contentType = _headerValue(ctx, 'content-type');
   final headers = ctx.headersWithoutContentType;
-  final hasBody = ctx.body != null && !ctx.binary;
-  final mediaType = contentType ?? 'text/plain; charset=utf-8';
+  final hasBody = ctx.body != null;
+  final mediaType = contentType ??
+      (ctx.binary ? 'application/octet-stream' : 'text/plain; charset=utf-8');
 
   sb.writeln('import java.util.concurrent.TimeUnit');
   sb.writeln('import okhttp3.MediaType.Companion.toMediaType');
@@ -1552,7 +1748,14 @@ String _kotlinOkHttp(_Ctx ctx) {
   sb.writeln('        .build()');
   sb.writeln();
 
-  if (hasBody) {
+  if (ctx.binary) {
+    sb.writeln('    val payload = ${_bytesLiteral('kotlin', ctx.rawBytes!)}');
+    _writeTruncNote(sb, 'kotlin', ctx.rawBytes!.length, '    ');
+    sb.writeln();
+    sb.writeln(
+        '    val body = payload.toRequestBody(${_q(mediaType)}.toMediaType())');
+    sb.writeln();
+  } else if (hasBody) {
     sb.writeln('    val payload = ${_kotlinBlock(ctx.jsonText, '    ')}');
     sb.writeln();
     sb.writeln(
@@ -1584,8 +1787,9 @@ String _kotlinOkHttp(_Ctx ctx) {
 
 String _csharpHttpClient(_Ctx ctx) {
   final sb = StringBuffer();
-  final hasBody = ctx.body != null && !ctx.binary;
-  final contentType = _headerValue(ctx, 'content-type') ?? 'text/plain';
+  final hasBody = ctx.body != null;
+  final contentType = _headerValue(ctx, 'content-type') ??
+      (ctx.binary ? 'application/octet-stream' : 'text/plain');
 
   sb.writeln('using System;');
   sb.writeln('using System.Net.Http;');
@@ -1605,7 +1809,15 @@ String _csharpHttpClient(_Ctx ctx) {
     sb.writeln('        request.Headers.TryAddWithoutValidation('
         '${_q(header.name)}, ${_q(header.value)});');
   }
-  if (hasBody) {
+  if (ctx.binary) {
+    sb.writeln();
+    sb.writeln(
+        '        var payload = ${_bytesLiteral('csharp', ctx.rawBytes!)};');
+    _writeTruncNote(sb, 'csharp', ctx.rawBytes!.length, '        ');
+    sb.writeln('        request.Content = new ByteArrayContent(payload);');
+    sb.writeln('        request.Content.Headers.TryAddWithoutValidation('
+        '"Content-Type", ${_q(contentType)});');
+  } else if (hasBody) {
     sb.writeln();
     sb.writeln(
         '        var payload = ${_csharpBlock(ctx.jsonText, '        ')};');
@@ -1675,6 +1887,11 @@ String _phpCurl(_Ctx ctx) {
     sb.writeln('\$payload = ${_formatLiteral(ctx.form, _phpSyntax)};');
     sb.writeln();
     payloadExpr = 'http_build_query(\$payload)';
+  } else if (ctx.binary) {
+    sb.writeln('\$payload = ${_bytesLiteral('php', ctx.rawBytes!)};');
+    _writeTruncNote(sb, 'php', ctx.rawBytes!.length, '');
+    sb.writeln();
+    payloadExpr = '\$payload';
   } else if (ctx.body != null) {
     sb.writeln('\$payload = ${_phpStr(ctx.body!)};');
     sb.writeln();
@@ -1733,6 +1950,11 @@ String _rubyNetHttp(_Ctx ctx) {
     sb.writeln('payload = ${_formatLiteral(ctx.form, _rubySyntax)}');
     sb.writeln();
     bodyExpr = 'URI.encode_www_form(payload)';
+  } else if (ctx.binary) {
+    sb.writeln('payload = ${_bytesLiteral('ruby', ctx.rawBytes!)}');
+    _writeTruncNote(sb, 'ruby', ctx.rawBytes!.length, '');
+    sb.writeln();
+    bodyExpr = 'payload';
   } else if (ctx.body != null) {
     sb.writeln('payload = ${_rbStr(ctx.body!)}');
     sb.writeln();
@@ -1786,7 +2008,7 @@ String? _rubyRequestClass(String method) {
 
 String _swiftUrlSession(_Ctx ctx) {
   final sb = StringBuffer();
-  final hasBody = ctx.body != null && !ctx.binary;
+  final hasBody = ctx.body != null;
   final json = ctx.json;
 
   sb.writeln('import Foundation');
@@ -1806,7 +2028,12 @@ String _swiftUrlSession(_Ctx ctx) {
   sb.writeln();
 
   if (hasBody) {
-    if (json is Map) {
+    if (ctx.binary) {
+      sb.writeln(
+          '        let payload = ${_bytesLiteral('swift', ctx.rawBytes!)}');
+      _writeTruncNote(sb, 'swift', ctx.rawBytes!.length, '        ');
+      sb.writeln('        request.httpBody = payload');
+    } else if (json is Map) {
       sb.writeln('        let payload: [String: Any] = '
           '${_indentRest(_formatLiteral(json, _swiftSyntax), '        ')}');
       sb.writeln(
@@ -1842,16 +2069,30 @@ String _swiftUrlSession(_Ctx ctx) {
 
 String _dartHttp(_Ctx ctx) {
   final sb = StringBuffer();
-  final structured = ctx.json != null || ctx.form != null;
-  final headers = structured
-      ? ctx.headers
-          .where((h) => h.name.toLowerCase() != 'content-type')
-          .toList()
-      : ctx.headers;
+  // package:http 不会替 String body 补 Content-Type：JSON 必须显式声明，
+  // 否则服务端按 text/plain 解析。
+  final List<_Header> headers;
+  if (ctx.json != null) {
+    headers = ctx.headers.toList();
+    if (_headerValue(ctx, 'content-type') == null) {
+      headers.add(const _Header('Content-Type', 'application/json'));
+    }
+  } else if (ctx.form != null) {
+    headers = ctx.headers
+        .where((h) => h.name.toLowerCase() != 'content-type')
+        .toList();
+  } else {
+    headers = ctx.headers;
+  }
 
   if (ctx.json != null) {
     // jsonEncode 需要 dart:convert
     sb.writeln("import 'dart:convert';");
+    sb.writeln();
+  }
+  if (ctx.binary) {
+    // Uint8List 需要 dart:typed_data
+    sb.writeln("import 'dart:typed_data';");
     sb.writeln();
   }
   sb.writeln("import 'package:http/http.dart' as http;");
@@ -1871,6 +2112,7 @@ String _dartHttp(_Ctx ctx) {
 
   String? shortcutBody;
   String? requestBody;
+  String? requestBodyBytes;
   if (ctx.json != null) {
     sb.writeln(
         '  final payload = ${_indentRest(_formatLiteral(ctx.json, _dartSyntax), '  ')};');
@@ -1883,6 +2125,13 @@ String _dartHttp(_Ctx ctx) {
     sb.writeln();
     shortcutBody = 'payload';
     requestBody = 'Uri(queryParameters: payload).query';
+  } else if (ctx.binary) {
+    sb.writeln('  final payload = ${_bytesLiteral('dart', ctx.rawBytes!)};');
+    _writeTruncNote(sb, 'dart', ctx.rawBytes!.length, '  ');
+    sb.writeln();
+    shortcutBody = 'payload';
+    // http.Request.body 只接受 String，二进制必须写 bodyBytes。
+    requestBodyBytes = 'payload';
   } else if (ctx.body != null) {
     sb.writeln('  const payload = ${_dartStr(ctx.body!)};');
     sb.writeln();
@@ -1908,6 +2157,8 @@ String _dartHttp(_Ctx ctx) {
     }
     if (requestBody != null) {
       sb.writeln('  request.body = $requestBody;');
+    } else if (requestBodyBytes != null) {
+      sb.writeln('  request.bodyBytes = $requestBodyBytes;');
     }
     sb.writeln();
     sb.writeln(
@@ -1928,7 +2179,7 @@ String _dartHttp(_Ctx ctx) {
 
 String _powershell(_Ctx ctx) {
   final sb = StringBuffer();
-  final hasBody = ctx.body != null && !ctx.binary;
+  final hasBody = ctx.body != null;
 
   if (ctx.headers.isNotEmpty) {
     sb.writeln('\$headers = @{');
@@ -1940,7 +2191,10 @@ String _powershell(_Ctx ctx) {
   }
 
   if (hasBody) {
-    if (ctx.json != null || ctx.isJson) {
+    if (ctx.binary) {
+      sb.writeln('\$body = ${_bytesLiteral('powershell', ctx.rawBytes!)}');
+      _writeTruncNote(sb, 'powershell', ctx.rawBytes!.length, '');
+    } else if (ctx.json != null || ctx.isJson) {
       sb.writeln('\$body = @\'');
       sb.writeln(ctx.jsonText);
       sb.writeln("'@");
@@ -1984,7 +2238,7 @@ String _titleCase(String method) {
 String _rawHttp(_Ctx ctx) {
   final sb = StringBuffer();
   final uri = ctx.uri;
-  final hasBody = ctx.body != null && !ctx.binary;
+  final hasBody = ctx.body != null;
 
   sb.writeln('${ctx.method} ${_pathAndQuery(uri)} HTTP/1.1');
 
@@ -1998,13 +2252,17 @@ String _rawHttp(_Ctx ctx) {
   }
 
   if (hasBody) {
-    // 输出的是重新格式化后的 body，长度必须按最终文本计算
-    sb.writeln('Content-Length: ${utf8.encode(ctx.jsonText).length}');
+    // 输出的是重新格式化后的 body，长度必须按最终文本计算；二进制 body 按真实
+    // 字节数计算（即使下面只转义输出前 512 字节）。
+    sb.writeln('Content-Length: '
+        '${ctx.binary ? ctx.rawBytes!.length : utf8.encode(ctx.jsonText).length}');
   }
 
   sb.writeln();
   if (hasBody) {
-    sb.writeln(ctx.jsonText);
+    // 原始 HTTP 没有注释语法，二进制只能转义成 \xNN 输出。
+    sb.writeln(
+        ctx.binary ? _bytesLiteral('http', ctx.rawBytes!) : ctx.jsonText);
   }
 
   return sb.toString();

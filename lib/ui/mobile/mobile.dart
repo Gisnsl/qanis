@@ -495,7 +495,6 @@ class RequestPageState extends State<RequestPage> {
               ]);
             }),
       ),
-      PictureInPictureIcon(proxyServer),
       // FAB 用 Stack 定位在右下（内层 Scaffold 的 floatingActionButton 会与底导航布局冲突）
       Positioned(right: 16, bottom: 12, child: _launchActionButton()),
     ]);

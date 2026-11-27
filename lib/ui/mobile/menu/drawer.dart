@@ -352,17 +352,26 @@ class _DrawerWidgetState extends State<DrawerWidget> {
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              const Icon(Icons.desktop_windows_outlined, size: 18, color: Colors.white),
+              const Center(
+                child: Icon(Icons.desktop_windows_outlined, size: 18, color: Colors.white),
+              ),
               const SizedBox(width: 10),
               Expanded(
-                child: Text(isCN ? '桌面端' : 'Desktop App',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        fontSize: 14, fontWeight: FontWeight.w500, color: Colors.white)),
+                child: Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: Text(isCN ? '桌面端' : 'Desktop App',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.start,
+                      style: const TextStyle(
+                          fontSize: 14, fontWeight: FontWeight.w500, color: Colors.white)),
+                ),
               ),
-              const Icon(Icons.chevron_right, size: 18, color: Colors.white)
+              const Center(
+                child: Icon(Icons.chevron_right, size: 18, color: Colors.white),
+              )
             ],
           ),
         ),
@@ -400,6 +409,7 @@ const double _kIconLabelGap = 12; // 图标与文字之间
 const double _kGroupPaddingV = 12; // 分组内上下留白
 const double _kGroupTail = 8; // 分组最后一行之后的额外留白
 const double _kGroupGap = 8; // 分组之间的外边距
+const double _kSectionHeaderHeight = 36; // 分组标题带高度（原值，保持不变）
 
 /// 分组容器：顶部 1dp 细线 + 上下 12dp 留白 + 行间细线 + 组尾 8dp + 组间 8dp
 class _DrawerGroup extends StatelessWidget {
@@ -445,25 +455,33 @@ class _SectionHeader extends StatelessWidget {
       splashColor: Colors.transparent,
       highlightColor: DarkPalette.hoverWeak,
       child: SizedBox(
-        height: 36,
+        height: _kSectionHeaderHeight,
         child: Padding(
           padding: const EdgeInsets.only(left: _kRowPaddingH, right: 12),
           child: Row(
+            // 显式垂直居中：11sp 大写标题的行盒与折叠箭头共享同一条中线
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Expanded(
-                child: Text(title.toUpperCase(),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 0.8,
-                        color: DarkPalette.text3)),
+                child: Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: Text(title.toUpperCase(),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.start,
+                      style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 0.8,
+                          color: DarkPalette.text3)),
+                ),
               ),
-              AnimatedRotation(
-                turns: expanded ? 0 : -0.25,
-                duration: const Duration(milliseconds: 160),
-                child: const Icon(Icons.expand_more, size: 18, color: DarkPalette.text3),
+              Center(
+                child: AnimatedRotation(
+                  turns: expanded ? 0 : -0.25,
+                  duration: const Duration(milliseconds: 160),
+                  child: const Icon(Icons.expand_more, size: 18, color: DarkPalette.text3),
+                ),
               )
             ],
           ),
@@ -507,35 +525,53 @@ class _DrawerItem extends StatelessWidget {
                 bottom: 0,
                 child: Container(width: 2, color: DarkPalette.primary),
               ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: _kRowPaddingH),
-              child: Row(
-                children: [
-                  SvgIcon(icon,
-                      size: 20, color: active ? DarkPalette.primary : DarkPalette.text2),
-                  const SizedBox(width: _kIconLabelGap),
-                  // Expanded + maxLines 1 + ellipsis：文字永远不会压到右侧箭头下面
-                  Expanded(
-                    child: Text(label,
-                        maxLines: 1,
-                        softWrap: false,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: active ? FontWeight.w600 : FontWeight.w400,
-                            color: DarkPalette.text1)),
-                  ),
-                  if (showDot) ...[
-                    Container(
-                      width: 6,
-                      height: 6,
-                      decoration:
-                          const BoxDecoration(shape: BoxShape.circle, color: DarkPalette.primary),
+            // Align(center)：Stack 的非定位子项默认按 topStart 摆放且只拿到松约束，
+            // 会让 Row 收缩到 ~20dp 并顶到 54dp 行的上沿。这里显式居中，
+            // 行内 Row 再用 crossAxisAlignment.center 把图标 / 文字 / 箭头对齐到同一条垂直中线。
+            Align(
+              alignment: Alignment.center,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: _kRowPaddingH),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Center(
+                      child: SvgIcon(icon,
+                          size: 20, color: active ? DarkPalette.primary : DarkPalette.text2),
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: _kIconLabelGap),
+                    // Expanded + maxLines 1 + ellipsis：文字永远不会压到右侧箭头下面
+                    // Align(centerStart) 只做垂直居中（水平仍左对齐），文字行盒（line box）无额外顶部内边距
+                    Expanded(
+                      child: Align(
+                        alignment: AlignmentDirectional.centerStart,
+                        child: Text(label,
+                            maxLines: 1,
+                            softWrap: false,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.start,
+                            style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: active ? FontWeight.w600 : FontWeight.w400,
+                                color: DarkPalette.text1)),
+                      ),
+                    ),
+                    if (showDot) ...[
+                      Center(
+                        child: Container(
+                          width: 6,
+                          height: 6,
+                          decoration: const BoxDecoration(
+                              shape: BoxShape.circle, color: DarkPalette.primary),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    const Center(
+                      child: Icon(Icons.chevron_right, size: 18, color: DarkPalette.text3),
+                    ),
                   ],
-                  const Icon(Icons.chevron_right, size: 18, color: DarkPalette.text3),
-                ],
+                ),
               ),
             )
           ],
