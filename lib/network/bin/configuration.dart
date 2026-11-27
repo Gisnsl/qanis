@@ -85,7 +85,8 @@ class Configuration {
   Configuration.fromJson(Map<String, dynamic> config) {
     port = config['port'] ?? port;
     enableSsl = config['enableSsl'] == true;
-    startup = config['startup'] ?? Platforms.isDesktop();
+    // 桌面端才允许开机自动开始抓包；手机端永远等待用户点击
+    startup = Platforms.isDesktop() ? (config['startup'] ?? true) : false;
     enableSystemProxy = config['enableSystemProxy'] ?? (config['enableDesktop'] ?? true);
     enableSocks5 = config['enableSocks5'] ?? true;
     enabledHttp2 = config['enabledHttp2'] ?? false;

@@ -16,6 +16,9 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:re_highlight/languages/all.dart';
+import 'package:re_highlight/re_highlight.dart';
+import 'package:re_highlight/styles/atom-one-dark.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_toastr/flutter_toastr.dart';
 import 'package:path_provider/path_provider.dart';
@@ -32,12 +35,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 const String _targetPrefsKey = 'code_snippet_target';
 
 /// 构造参数 [CodeSnippetPage.initialTarget] 的默认值，用于区分“调用方显式指定”与“未指定”。
-const String _defaultTarget = 'curl';
+const String _defaultTarget = 'python-requests';
 
 /// 代码片段查看/复制/保存页：把一条请求渲染成 22 种语言/工具的调用代码。
 /// 外观与 fork 里其它 Reqable 风格页面一致（charcoal + amber，令牌取自 [DarkPalette]）。
 class CodeSnippetPage extends StatefulWidget {
-  const CodeSnippetPage({super.key, required this.request, this.initialTarget = 'curl'});
+  const CodeSnippetPage({super.key, required this.request, this.initialTarget = 'python-requests'});
 
   final HttpRequest request;
 
@@ -360,7 +363,10 @@ class _CodeSnippetPageState extends State<CodeSnippetPage> {
               child: SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.only(left: 10, right: 12),
-                child: SelectableText(display, style: _monoStyle),
+                child: SelectableText.rich(
+                  _highlighted(display),
+                  style: _monoStyle,
+                ),
               ),
             ),
           ],
@@ -368,6 +374,28 @@ class _CodeSnippetPageState extends State<CodeSnippetPage> {
       ),
     );
   }
+
+  /// 语法高亮：用 re_highlight 生成带颜色的 span，未知语言回退为纯文本
+  TextSpan _highlighted(String code) {
+    try {
+      final language = _target.language == 'http' ? 'shell' : _target.language;
+      final result = _highlighter.highlight(code: code, language: language);
+      final renderer = TextSpanRenderer(_monoStyle, atomOneDarkTheme);
+      result.render(renderer);
+      return renderer.span ?? TextSpan(text: code, style: _monoStyle);
+    } catch (_) {
+      return TextSpan(text: code, style: _monoStyle);
+    }
+  }
+
+  /// 一次性注册 re_highlight 内置的全部语言，任何目标都能上色
+  static final Highlight _highlighter = () {
+    final h = Highlight();
+    for (final entry in builtinAllLanguages.entries) {
+      h.registerLanguage(entry.key, entry.value);
+    }
+    return h;
+  }();
 
   String _stripTrailingNewlines(String text) {
     var end = text.length;

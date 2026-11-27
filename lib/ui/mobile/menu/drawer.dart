@@ -122,45 +122,47 @@ class _DrawerWidgetState extends State<DrawerWidget> {
           children: [
             _buildHeader(isCN),
             _buildDesktopAppBanner(context, isCN),
-            // Tabs
-            _SectionHeader(
-              title: isCN ? '标签' : 'Tabs',
-              expanded: _tabsExpanded,
-              onTap: () => setState(() => _tabsExpanded = !_tabsExpanded),
-            ),
-            if (_tabsExpanded)
-              ..._withHairlines([
-                _DrawerItem(
-                  icon: 'list',
-                  label: '${isCN ? '流量' : 'Traffic'} (${widget.container.length})',
-                  active: true,
-                  showDot: true,
-                  onTap: () => Navigator.of(context).pop(),
-                ),
-              ]),
-            // Tools
+            // ---- 首屏分组：收藏 / 历史 / 证书管理（常驻展开，不可折叠）----
+            _DrawerGroup(rows: [
+              _DrawerItem(
+                icon: 'favorite',
+                label: localizations.favorites,
+                onTap: () => navigator(context, MobileFavorites(proxyServer: widget.proxyServer)),
+              ),
+              _DrawerItem(
+                icon: 'history',
+                label: localizations.history,
+                onTap: () => navigator(
+                    context,
+                    MobileHistory(
+                        proxyServer: widget.proxyServer,
+                        container: widget.container,
+                        historyTask: historyTask)),
+              ),
+              _DrawerItem(
+                icon: widget.proxyServer.enableSsl ? 'lock' : 'ssl',
+                // 原 “HTTPS Proxy” 行：仅把标签改成字面量 Certificate Management，
+                // 图标与跳转（MobileSslWidget）保持原样
+                label: 'Certificate Management',
+                onTap: () => navigator(context, MobileSslWidget(proxyServer: widget.proxyServer)),
+              ),
+              // 流量：计数、选中态与跳转保持不变
+              _DrawerItem(
+                icon: 'list',
+                label: '${isCN ? '流量' : 'Traffic'} (${widget.container.length})',
+                active: true,
+                showDot: true,
+                onTap: () => Navigator.of(context).pop(),
+              ),
+            ]),
+            // ---- Tools ----
             _SectionHeader(
               title: isCN ? '工具' : 'Tools',
               expanded: _toolsExpanded,
               onTap: () => setState(() => _toolsExpanded = !_toolsExpanded),
             ),
             if (_toolsExpanded)
-              ..._withHairlines([
-                _DrawerItem(
-                  icon: 'favorite',
-                  label: localizations.favorites,
-                  onTap: () => navigator(context, MobileFavorites(proxyServer: widget.proxyServer)),
-                ),
-                _DrawerItem(
-                  icon: 'history',
-                  label: localizations.history,
-                  onTap: () => navigator(
-                      context,
-                      MobileHistory(
-                          proxyServer: widget.proxyServer,
-                          container: widget.container,
-                          historyTask: historyTask)),
-                ),
+              _DrawerGroup(rows: [
                 _DrawerItem(
                   icon: 'encode',
                   label: isCN ? '编解码' : 'Encode / Decode',
@@ -176,11 +178,6 @@ class _DrawerWidgetState extends State<DrawerWidget> {
                           body: Toolbox(proxyServer: widget.proxyServer));
                     }),
                   ),
-                ),
-                _DrawerItem(
-                  icon: widget.proxyServer.enableSsl ? 'lock' : 'ssl',
-                  label: localizations.httpsProxy,
-                  onTap: () => navigator(context, MobileSslWidget(proxyServer: widget.proxyServer)),
                 ),
                 _DrawerItem(
                   icon: 'funnel',
@@ -242,8 +239,11 @@ class _DrawerWidgetState extends State<DrawerWidget> {
                     }
                   },
                 ),
-                // 弱网模拟：沿用原有组件，行为不变
-                const WeakNetworkMenuTile(),
+                // 弱网模拟：沿用原有组件，行为不变，仅补齐行高
+                ConstrainedBox(
+                  constraints: const BoxConstraints(minHeight: _kRowHeight),
+                  child: const WeakNetworkMenuTile(),
+                ),
                 _DrawerItem(
                   icon: 'globe',
                   label: localizations.environmentVariables,
@@ -255,14 +255,14 @@ class _DrawerWidgetState extends State<DrawerWidget> {
                   onTap: () => navigator(context, MobileMcpSetting(proxyServer: widget.proxyServer)),
                 ),
               ]),
-            // Others
+            // ---- Others ----
             _SectionHeader(
               title: isCN ? '其他' : 'Others',
               expanded: _othersExpanded,
               onTap: () => setState(() => _othersExpanded = !_othersExpanded),
             ),
             if (_othersExpanded)
-              ..._withHairlines([
+              _DrawerGroup(rows: [
                 _DrawerItem(
                   icon: 'sliders',
                   label: localizations.config,
@@ -369,16 +369,6 @@ class _DrawerWidgetState extends State<DrawerWidget> {
       ),
     );
   }
-
-  /// 在行之间插入 0.5dp 内缩细线
-  List<Widget> _withHairlines(List<Widget> rows) {
-    final children = <Widget>[];
-    for (var i = 0; i < rows.length; i++) {
-      if (i > 0) children.add(const _Hairline());
-      children.add(rows[i]);
-    }
-    return children;
-  }
 }
 
 /// 请求数变化监听：ListenableList 使用自定义事件接口
@@ -403,6 +393,43 @@ class _RequestCountListener extends ListenerListEvent<HttpRequest> {
   void clear(List<HttpRequest> items) => onChanged();
 }
 
+/// 抽屉行的统一尺寸令牌
+const double _kRowHeight = 54; // 行高
+const double _kRowPaddingH = 16; // 行左右内边距
+const double _kIconLabelGap = 12; // 图标与文字之间
+const double _kGroupPaddingV = 12; // 分组内上下留白
+const double _kGroupTail = 8; // 分组最后一行之后的额外留白
+const double _kGroupGap = 8; // 分组之间的外边距
+
+/// 分组容器：顶部 1dp 细线 + 上下 12dp 留白 + 行间细线 + 组尾 8dp + 组间 8dp
+class _DrawerGroup extends StatelessWidget {
+  final List<Widget> rows;
+
+  const _DrawerGroup({required this.rows});
+
+  @override
+  Widget build(BuildContext context) {
+    final children = <Widget>[];
+    for (var i = 0; i < rows.length; i++) {
+      if (i > 0) children.add(const _RowSeparator());
+      children.add(rows[i]);
+    }
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // 分组上方的 1dp 分隔线
+        Container(height: 1, color: DarkPalette.divider),
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: _kGroupPaddingV),
+          child: Column(mainAxisSize: MainAxisSize.min, children: children),
+        ),
+        // 最后一行之后 8dp 额外留白 + 分组之间 8dp 外边距
+        const SizedBox(height: _kGroupTail + _kGroupGap),
+      ],
+    );
+  }
+}
+
 /// 分组标题：11sp 大写灰字 + 折叠箭头
 class _SectionHeader extends StatelessWidget {
   final String title;
@@ -420,7 +447,7 @@ class _SectionHeader extends StatelessWidget {
       child: SizedBox(
         height: 36,
         child: Padding(
-          padding: const EdgeInsets.only(left: 16, right: 12),
+          padding: const EdgeInsets.only(left: _kRowPaddingH, right: 12),
           child: Row(
             children: [
               Expanded(
@@ -470,7 +497,7 @@ class _DrawerItem extends StatelessWidget {
       splashColor: Colors.transparent,
       highlightColor: DarkPalette.hoverWeak,
       child: SizedBox(
-        height: 54,
+        height: _kRowHeight,
         child: Stack(
           children: [
             if (active)
@@ -481,28 +508,33 @@ class _DrawerItem extends StatelessWidget {
                 child: Container(width: 2, color: DarkPalette.primary),
               ),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
+              padding: const EdgeInsets.symmetric(horizontal: _kRowPaddingH),
               child: Row(
                 children: [
                   SvgIcon(icon,
                       size: 20, color: active ? DarkPalette.primary : DarkPalette.text2),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: _kIconLabelGap),
+                  // Expanded + maxLines 1 + ellipsis：文字永远不会压到右侧箭头下面
                   Expanded(
                     child: Text(label,
                         maxLines: 1,
+                        softWrap: false,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                             fontSize: 14,
                             fontWeight: active ? FontWeight.w600 : FontWeight.w400,
                             color: DarkPalette.text1)),
                   ),
-                  if (showDot)
+                  if (showDot) ...[
                     Container(
                       width: 6,
                       height: 6,
                       decoration:
                           const BoxDecoration(shape: BoxShape.circle, color: DarkPalette.primary),
-                    )
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                  const Icon(Icons.chevron_right, size: 18, color: DarkPalette.text3),
                 ],
               ),
             )
@@ -513,14 +545,15 @@ class _DrawerItem extends StatelessWidget {
   }
 }
 
-class _Hairline extends StatelessWidget {
-  const _Hairline();
+/// 组内行与行之间的 1dp 细线（左内缩对齐图标）
+class _RowSeparator extends StatelessWidget {
+  const _RowSeparator();
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 0.5,
-      margin: const EdgeInsets.only(left: 16),
+      height: 1,
+      margin: const EdgeInsets.only(left: _kRowPaddingH),
       color: DarkPalette.divider,
     );
   }

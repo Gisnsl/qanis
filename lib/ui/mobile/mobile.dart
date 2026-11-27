@@ -28,6 +28,8 @@ import 'package:qanis/network/bin/configuration.dart';
 import 'package:qanis/network/bin/listener.dart';
 import 'package:qanis/network/bin/server.dart';
 import 'package:qanis/network/util/crts.dart';
+import 'package:qanis/ui/mobile/setting/ssl.dart';
+import 'package:qanis/native/cert_status.dart';
 import 'package:qanis/network/channel/channel.dart';
 import 'package:qanis/network/channel/channel_context.dart';
 import 'package:qanis/network/http/http.dart';
@@ -521,9 +523,44 @@ class RequestPageState extends State<RequestPage> {
               child: SocketLaunch(
                 proxyServer: proxyServer,
                 size: 30,
-              startup: proxyServer.configuration.startup,
+              // 手机上绝不自动开始抓包：只有用户按下这个按钮才开始
+              startup: false,
               serverLaunch: false,
               onStart: () async {
+                // 未安装 CA 时先提示，确认后跳转安装页
+                if (Platform.isAndroid && proxyServer.enableSsl) {
+                  try {
+                    final pem = await CertificateManager.certificatePem();
+                    final state = await CertStatus.caStatus(pem);
+                    if (state == CaInstallState.none) {
+                      final go = await showDialog<bool>(
+                          context: context,
+                          builder: (dialogContext) => AlertDialog(
+                                title: const Text('Certificate not installed', style: TextStyle(fontSize: 17)),
+                                content: const Text(
+                                    'HTTPS traffic cannot be decrypted without the QANIS CA. '
+                                    'Install it now?',
+                                    style: TextStyle(fontSize: 13)),
+                                actions: [
+                                  TextButton(
+                                      onPressed: () => Navigator.pop(dialogContext, false),
+                                      child: const Text('Cancel')),
+                                  TextButton(
+                                      onPressed: () => Navigator.pop(dialogContext, true),
+                                      child: const Text('Confirm')),
+                                ],
+                              ));
+                      if (go == true && mounted) {
+                        Navigator.of(context).push(
+                            MaterialPageRoute(builder: (_) => MobileSslWidget(proxyServer: proxyServer)));
+                      }
+                      return;
+                    }
+                  } catch (_) {
+                    // 状态读不到时不阻塞用户
+                  }
+                }
+
                 String host = Platform.isAndroid ? await localIp(readCache: false) : "127.0.0.1";
                 int port = proxyServer.port;
                 if (Platform.isIOS) {
@@ -545,7 +582,7 @@ class RequestPageState extends State<RequestPage> {
 
   /// HTTPS 解密开关条：未开启时显示，点击即开启并从界面消失
   Widget enableSslBar() {
-    if (proxyServer.enableSsl) {
+    if (proxyServer.enableSsl && proxyServer.configuration.enabledHttp2) {
       return const SizedBox();
     }
     return Container(
@@ -557,7 +594,9 @@ class RequestPageState extends State<RequestPage> {
         child: InkWell(
           borderRadius: BorderRadius.circular(8),
           onTap: () {
+            // Enhanced mode = HTTPS decryption + HTTP/2, both at once
             proxyServer.enableSsl = true;
+            proxyServer.configuration.enabledHttp2 = true;
             proxyServer.configuration.flushConfig();
             CertificateManager.cleanCache();
             setState(() {});

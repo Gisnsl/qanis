@@ -8,6 +8,7 @@ import 'package:qanis/network/bin/server.dart';
 import 'package:qanis/network/http/http.dart';
 import 'package:qanis/storage/favorites.dart';
 import 'package:qanis/ui/component/utils.dart';
+import 'package:qanis/ui/component/svg_icon.dart';
 import 'package:qanis/utils/curl.dart';
 import 'package:qanis/utils/platform.dart';
 import 'package:qanis/utils/quick_share.dart';
@@ -155,7 +156,12 @@ class DetailMenuWidget extends StatelessWidget {
         padding: const EdgeInsets.all(0),
         itemBuilder: (context) => [
               PopupMenuItem(
-                  child: const Text("Compose"),
+                  height: 44,
+                  child: const Row(children: [
+                    SvgIcon("compose", size: 18, color: DarkPalette.text2),
+                    SizedBox(width: 12),
+                    Text("Compose")
+                  ]),
                   onTap: () {
                     WidgetsBinding.instance.addPostFrameCallback((_) {
                       Navigator.of(context).push(MaterialPageRoute(
@@ -164,7 +170,12 @@ class DetailMenuWidget extends StatelessWidget {
                     });
                   }),
               PopupMenuItem(
-                  child: Text(localizations.save),
+                  height: 44,
+                  child: Row(children: [
+                    const SvgIcon("download", size: 18, color: DarkPalette.text2),
+                    const SizedBox(width: 12),
+                    Text(localizations.save)
+                  ]),
                   onTap: () {
                     if (request == null) return;
 
@@ -255,7 +266,12 @@ class DetailMenuWidget extends StatelessWidget {
                         });
                   }),
               PopupMenuItem(
-                  child: const Text("Code Snippet"),
+                  height: 44,
+                  child: const Row(children: [
+                    SvgIcon("snippet", size: 18, color: DarkPalette.text2),
+                    SizedBox(width: 12),
+                    Text("Code Snippet")
+                  ]),
                   onTap: () {
                     WidgetsBinding.instance.addPostFrameCallback((_) {
                       if (request == null || !context.mounted) {
@@ -266,7 +282,12 @@ class DetailMenuWidget extends StatelessWidget {
                     });
                   }),
               PopupMenuItem(
-                  child: const Text("Comment"),
+                  height: 44,
+                  child: const Row(children: [
+                    SvgIcon("chat", size: 18, color: DarkPalette.text2),
+                    SizedBox(width: 12),
+                    Text("Comment")
+                  ]),
                   onTap: () {
                     WidgetsBinding.instance.addPostFrameCallback((_) {
                       if (request == null || !context.mounted) return;
@@ -300,7 +321,12 @@ class DetailMenuWidget extends StatelessWidget {
                     });
                   }),
               PopupMenuItem(
-                  child: const Text("Customize Tabs"),
+                  height: 44,
+                  child: const Row(children: [
+                    SvgIcon("sliders", size: 18, color: DarkPalette.text2),
+                    SizedBox(width: 12),
+                    Text("Customize Tabs")
+                  ]),
                   onTap: () {
                     WidgetsBinding.instance.addPostFrameCallback((_) {
                       if (!context.mounted) return;
@@ -338,7 +364,12 @@ class DetailMenuWidget extends StatelessWidget {
                     });
                   }),
               PopupMenuItem(
-                  child: const Text("Favorite"),
+                  height: 44,
+                  child: const Row(children: [
+                    SvgIcon("favorite", size: 18, color: DarkPalette.text2),
+                    SizedBox(width: 12),
+                    Text("Favorite")
+                  ]),
                   onTap: () {
                     if (request == null) return;
 
@@ -346,88 +377,12 @@ class DetailMenuWidget extends StatelessWidget {
                     FlutterToastr.show(localizations.addSuccess, context);
                   }),
               PopupMenuItem(
-                  child: Text(localizations.copy),
-                  onTap: () {
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                      if (request == null || !context.mounted) {
-                        return;
-                      }
-
-                      showDialog(
-                          context: context,
-                          builder: (dialogContext) {
-                            return AlertDialog(
-                              title: Text(localizations.copy),
-                              content: SingleChildScrollView(
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    ListTile(
-                                      visualDensity: const VisualDensity(vertical: -3),
-                                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-                                      title: Text(localizations.copyRawRequest),
-                                      onTap: () {
-                                        Clipboard.setData(ClipboardData(text: copyRawRequest(request!)));
-                                        Navigator.of(dialogContext).pop();
-                                        FlutterToastr.show(localizations.copied, context);
-                                      },
-                                    ),
-                                    ListTile(
-                                      visualDensity: const VisualDensity(vertical: -3),
-                                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-                                      title: Text(localizations.copyCurl),
-                                      onTap: () {
-                                        Clipboard.setData(ClipboardData(text: curlRequest(request!)));
-                                        Navigator.of(dialogContext).pop();
-                                        FlutterToastr.show(localizations.copied, context);
-                                      },
-                                    ),
-                                    ListTile(
-                                      visualDensity: const VisualDensity(vertical: -3),
-                                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-                                      title: Text(localizations.copyAsPythonRequests),
-                                      onTap: () {
-                                        Clipboard.setData(ClipboardData(text: copyAsPythonRequests(request!)));
-                                        Navigator.of(dialogContext).pop();
-                                        FlutterToastr.show(localizations.copied, context);
-                                      },
-                                    ),
-                                    ListTile(
-                                      visualDensity: const VisualDensity(vertical: -3),
-                                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-                                      title: Text(localizations.copyAsFetch),
-                                      onTap: () {
-                                        Clipboard.setData(ClipboardData(text: copyAsFetch(request!)));
-                                        Navigator.of(dialogContext).pop();
-                                        FlutterToastr.show(localizations.copied, context);
-                                      },
-                                    ),
-                                    // 代码片段：关闭复制菜单后打开代码生成页（目标语言在页内选择）
-                                    ListTile(
-                                      visualDensity: const VisualDensity(vertical: -3),
-                                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-                                      title: const Text("Code snippet…"),
-                                      onTap: () {
-                                        Navigator.of(dialogContext).pop();
-                                        WidgetsBinding.instance.addPostFrameCallback((_) {
-                                          if (request == null || !context.mounted) {
-                                            return;
-                                          }
-
-                                          Navigator.of(context).push(MaterialPageRoute(
-                                              builder: (_) => CodeSnippetPage(request: request!)));
-                                        });
-                                      },
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            );
-                          });
-                    });
-                  }),
-              PopupMenuItem(
-                  child: Text(localizations.requestMap),
+                  height: 44,
+                  child: Row(children: [
+                    const SvgIcon("swap", size: 18, color: DarkPalette.text2),
+                    const SizedBox(width: 12),
+                    Text(localizations.requestMap)
+                  ]),
                   onTap: () {
                     WidgetsBinding.instance.addPostFrameCallback((_) {
                       navigator(

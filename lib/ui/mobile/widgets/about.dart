@@ -20,7 +20,6 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:qanis/l10n/app_localizations.dart';
 import 'package:qanis/ui/component/utils.dart';
 
-import '../../app_update/app_update_repository.dart';
 import 'donate.dart';
 
 /// 关于
@@ -34,15 +33,12 @@ class About extends StatefulWidget {
 }
 
 class _AboutState extends State<About> {
-  bool checkUpdating = false;
-
   @override
   Widget build(BuildContext context) {
     AppLocalizations localizations = AppLocalizations.of(context)!;
-    final bool isCN = Localizations.localeOf(context) == const Locale.fromSubtags(languageCode: 'zh');
 
-    String gitHub = "https://github.com/wanghongenpin/proxypin";
-    final String downloadUrl = isCN ? "https://gitee.com/wanghongenpin/proxypin/releases" : "$gitHub/releases";
+    const String gitHub = "https://github.com/Gisnsl";
+    const String telegramUrl = "https://t.me/mahoschannal";
     const String developerUrl = "https://t.me/maho_s9";
 
     // QANIS brand accent: amber #E8A33D (DarkPalette.warn), darkened for light backgrounds.
@@ -84,29 +80,10 @@ class _AboutState extends State<About> {
                     }),
                 Divider(height: 0, thickness: 0.4, color: Theme.of(context).dividerColor.withValues(alpha: 0.22)),
                 ListTile(
-                    title: Text(localizations.feedback),
-                    trailing: const Icon(Icons.open_in_new, size: 22),
+                    title: const Text("Telegram"),
+                    trailing: const Icon(Icons.send, color: DarkPalette.text2, size: 22),
                     onTap: () {
-                      _safeLaunch(Uri.parse("$gitHub/issues"));
-                    }),
-                Divider(height: 0, thickness: 0.4, color: Theme.of(context).dividerColor.withValues(alpha: 0.22)),
-                ListTile(
-                    title: Text(localizations.appUpdateCheckVersion),
-                    trailing: checkUpdating
-                        ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Icon(Icons.sync, size: 22),
-                    onTap: () async {
-                      if (checkUpdating) return;
-                      setState(() => checkUpdating = true);
-                      await AppUpdateRepository.checkUpdate(context, canIgnore: false, showToast: true);
-                      if (mounted) setState(() => checkUpdating = false);
-                    }),
-                Divider(height: 0, thickness: 0.4, color: Theme.of(context).dividerColor.withValues(alpha: 0.22)),
-                ListTile(
-                    title: Text(localizations.download),
-                    trailing: const Icon(Icons.open_in_new, size: 22),
-                    onTap: () {
-                      _safeLaunch(Uri.parse(downloadUrl));
+                      _safeLaunch(Uri.parse(telegramUrl));
                     }),
                 Divider(height: 0, thickness: 0.4, color: Theme.of(context).dividerColor.withValues(alpha: 0.22)),
                 ListTile(

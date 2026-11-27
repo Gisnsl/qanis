@@ -73,51 +73,18 @@ class RequestListState extends State<RequestListWidget> {
 
   @override
   Widget build(BuildContext context) {
-    List<Widget> tabs = [Tab(child: Text(localizations.sequence))];
-
-    //double click scroll to top
-    var tabClickHandles = [DoubleClickHandle(handle: () => requestSequenceKey.currentState?.scrollToTop())];
-
-    return DefaultTabController(
-        length: tabs.length,
-        child: Scaffold(
-          backgroundColor: _listBackground(context),
-          appBar: AppBar(
-              title: TabBar(
-                  tabs: tabs,
-                  onTap: (index) => tabClickHandles[index].call(),
-                  // Reqable 琥珀下划线标签：选中主色指示条 + 发丝分隔线
-                  indicatorColor: DarkPalette.primary,
-                  indicatorSize: TabBarIndicatorSize.label,
-                  indicatorWeight: 2,
-                  dividerColor: DarkPalette.divider,
-                  dividerHeight: 0.5,
-                  labelColor: DarkPalette.text1,
-                  unselectedLabelColor: DarkPalette.text3,
-                  labelStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-                  unselectedLabelStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w400),
-                  overlayColor: WidgetStateProperty.all(DarkPalette.hover),
-                  splashFactory: InkRipple.splashFactory),
-              automaticallyImplyLeading: false,
-              backgroundColor: DarkPalette.panel,
-              foregroundColor: DarkPalette.text1,
-              surfaceTintColor: Colors.transparent,
-              elevation: 0,
-              scrolledUnderElevation: 0),
-          body: _reqableRowTheme(
-            context,
-            TabBarView(
-              children: [
-                RequestSequence(
-                    key: requestSequenceKey,
-                    container: container,
-                    proxyServer: widget.proxyServer,
-                    onRemove: sequenceRemove,
-                    selectionController: widget.selectionController),
-              ],
-            ),
-          ),
-        ));
+    return Scaffold(
+      backgroundColor: _listBackground(context),
+      body: _reqableRowTheme(
+        context,
+        RequestSequence(
+            key: requestSequenceKey,
+            container: container,
+            proxyServer: widget.proxyServer,
+            onRemove: sequenceRemove,
+            selectionController: widget.selectionController),
+      ),
+    );
   }
 
   /// Reqable 炭灰底（AMOLED 纯黑主题下沿用纯黑）
@@ -245,6 +212,7 @@ class RequestListState extends State<RequestListWidget> {
   }
 }
 
+/// 双击判定句柄（保留给仍在引用它的外部组件）
 class DoubleClickHandle {
   int tabClickTime = 0;
   final Function()? handle;

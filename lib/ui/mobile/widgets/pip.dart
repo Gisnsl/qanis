@@ -337,13 +337,6 @@ class _PictureInPictureState extends State<PictureInPictureIcon> {
       child: Stack(
         clipBehavior: Clip.none,
         children: [
-          if (capturing)
-            Positioned(
-              top: 19,
-              right: rightSide ? _bubbleSize + 6 : null,
-              left: rightSide ? null : _bubbleSize + 6,
-              child: IgnorePointer(child: _countPill()),
-            ),
           GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: () => setState(() => _expanded = true),
@@ -384,21 +377,6 @@ class _PictureInPictureState extends State<PictureInPictureIcon> {
         ],
       ),
       child: const Center(child: Icon(Icons.radar, size: 26, color: Colors.white)),
-    );
-  }
-
-  /// 流计数胶囊：11sp、panel 90% 底、12 圆角
-  Widget _countPill() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: DarkPalette.panel.withValues(alpha: 0.9),
-        borderRadius: BorderRadius.circular(_cardRadius),
-      ),
-      child: Text(
-        '$_flowCount flows',
-        style: const TextStyle(fontSize: 11, height: 1.2, fontWeight: FontWeight.w500, color: DarkPalette.text1),
-      ),
     );
   }
 
