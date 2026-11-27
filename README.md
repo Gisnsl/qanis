@@ -1,50 +1,118 @@
-# ProxyPin
+# Qunis (قنص)
 
-English | [中文](README_CN.md)
-## Open source free traffic capture HTTP(S)，Support Windows、Mac、Android、IOS、Linux Full platform system
+**Android Network Traffic Inspector & HTTP Request Editor**
 
-You can use it to intercept, inspect & rewrite HTTP(S) traffic, Support capturing Flutter app traffic, ProxyPin is based on Flutter develop, and the UI is beautiful
-and easy to use.
+Qunis is an Android application for capturing, inspecting, and working with network traffic.
+
+## About Qunis
+
+Qunis helps developers and security researchers understand how Android applications communicate over the network.
+
+Capture supported network requests, inspect their contents, modify requests, and send them again for testing.
 
 ## Features
-* Mobile scan code connection: no need to manually configure WiFi proxy, including configuration synchronization. All terminals can scan codes to connect and forward traffic to each other.
-* Domain name filtering: Only intercept the traffic you need, and do not intercept other traffic to avoid interference with other applications.
-* Search: Search requests according to keywords, response types and other conditions
-* Script: Support writing JavaScript scripts to process requests or responses.
-* Request Rewrite: Support redirection, support replacement of request or response message, and can also modify request or response according to the increase.
-* Request Mapping: Do not request remote services, use local configuration or scripts for response
-* Request Decryption: Configure AES decryption key to automatically decrypt HTTP message body
-* Request Blocking: Support blocking requests according to URL, and do not send requests to the server.
-* History: Automatically save the captured traffic data for easy backtracking and viewing. Support HAR format export and import.
-* Others: Favorites, toolbox, common encoding tools, as well as QR codes, regular expressions, etc.
 
-**Mac will prompt untrusted developers when first opened, you need to go to System Preferences-Security & Privacy-Allow any source.**
+- **Traffic Capture:** Capture and monitor supported network traffic.
+- **Request Inspection:** Inspect HTTP methods, URLs, headers, query parameters, and request bodies.
+- **Request Editing:** Modify captured requests, including URLs, methods, headers, and bodies.
+- **Custom Requests:** Compose and send custom HTTP requests.
+- **Response Inspection:** Examine HTTP responses and their contents.
+- **Traffic Analysis:** Review captured requests to understand application network activity.
 
-## Sponsors
+## Download
 
-If ProxyPin is helpful to you, you are welcome to support us in the following ways to help the project develop in the long term:
+Download Qunis from the official GitHub release:
 
-* [Buy Me A Coffee](https://buymeacoffee.com/proxypin)
-* [AFDIAN](https://afdian.com/a/proxypin)
-* Submit feedback and suggestions to help us improve
-* Contribute code or documentation to the project
+[**DOWNLOAD QUNIS**](https://github.com/Gisnsl/qanis/releases/tag/build-9)
 
-**Your support will be used for project maintenance, feature development, and user experience optimization. Thank you very much!**
+### Available APKs
 
-## Downloads
+- `qanis-universal.apk` — Recommended for most users.
+- `qanis-arm64-v8a.apk`
+- `qanis-armeabi-v7a.apk`
+- `qanis-x86_64.apk`
 
-Github Releases: https://github.com/wanghongenpin/proxypin/releases
+## Screenshots
 
-iOS App Store：https://apps.apple.com/app/proxypin/id6450932949
+<table>
+<tr>
+<td align="center"><img src="screenshot/0.jpg" alt="Qunis Screenshot 1" width="360"></td>
+<td align="center"><img src="screenshot/1.jpg" alt="Qunis Screenshot 2" width="360"></td>
+</tr>
+<tr>
+<td align="center"><img src="screenshot/2.jpg" alt="Qunis Screenshot 3" width="360"></td>
+<td align="center"><img src="screenshot/3.jpg" alt="Qunis Screenshot 4" width="360"></td>
+</tr>
+<tr>
+<td align="center"><img src="screenshot/4.jpg" alt="Qunis Screenshot 5" width="360"></td>
+<td align="center"><img src="screenshot/5.jpg" alt="Qunis Screenshot 6" width="360"></td>
+</tr>
+<tr>
+<td align="center"><img src="screenshot/6.jpg" alt="Qunis Screenshot 7" width="360"></td>
+<td align="center"><img src="screenshot/7.jpg" alt="Qunis Screenshot 8" width="360"></td>
+</tr>
+<tr>
+<td align="center"><img src="screenshot/8.jpg" alt="Qunis Screenshot 9" width="360"></td>
+<td align="center"><img src="screenshot/9.jpg" alt="Qunis Screenshot 10" width="360"></td>
+</tr>
+<tr>
+<td align="center"><img src="screenshot/10.jpg" alt="Qunis Screenshot 11" width="360"></td>
+<td align="center"><img src="screenshot/11.jpg" alt="Qunis Screenshot 12" width="360"></td>
+</tr>
+<tr>
+<td align="center"><img src="screenshot/12.jpg" alt="Qunis Screenshot 13" width="360"></td>
+<td align="center"><img src="screenshot/13.jpg" alt="Qunis Screenshot 14" width="360"></td>
+</tr>
+<tr>
+<td align="center"><img src="screenshot/14.jpg" alt="Qunis Screenshot 15" width="360"></td>
+<td align="center"><img src="screenshot/15.jpg" alt="Qunis Screenshot 16" width="360"></td>
+</tr>
+<tr>
+<td align="center"><img src="screenshot/16.jpg" alt="Qunis Screenshot 17" width="360"></td>
+<td align="center"><img src="screenshot/17.jpg" alt="Qunis Screenshot 18" width="360"></td>
+</tr>
+<tr>
+<td align="center"><img src="screenshot/18.jpg" alt="Qunis Screenshot 19" width="360"></td>
+<td align="center"><img src="screenshot/19.jpg" alt="Qunis Screenshot 20" width="360"></td>
+</tr>
+<tr>
+<td align="center"><img src="screenshot/20.jpg" alt="Qunis Screenshot 21" width="360"></td>
+<td align="center"><img src="screenshot/21.jpg" alt="Qunis Screenshot 22" width="360"></td>
+</tr>
+<tr>
+<td align="center"><img src="screenshot/22.jpg" alt="Qunis Screenshot 23" width="360"></td>
+<td align="center"><img src="screenshot/23.jpg" alt="Qunis Screenshot 24" width="360"></td>
+</tr>
+<tr>
+<td align="center"><img src="screenshot/24.jpg" alt="Qunis Screenshot 25" width="360"></td>
+<td align="center"><img src="screenshot/25.jpg" alt="Qunis Screenshot 26" width="360"></td>
+</tr>
+</table>
 
-Android Google Play：https://play.google.com/store/apps/details?id=com.network.proxy
+## Donate 💸
 
-TG: https://t.me/proxypin_en
+Your support helps the continued development of Qunis.
 
-**We will continue to improve the features and experience, as well as optimize the UI.**
+**USDT — Optimism Network**
 
-<img alt="image"  width="580px" height="420px"  src="https://github.com/user-attachments/assets/6c1345ab-c95c-415d-ac59-470c764b59a2">.<img alt="image"  height="500px" src="https://github.com/user-attachments/assets/3c5572b0-a9e5-497c-8b42-f935e836c164">
+`0x1bc2ff931ac23107da7abc0a3826edd8da00a7b5`
 
+**USDT — TRC20 Network**
 
-### Powered by
-[![JetBrains logo.](https://resources.jetbrains.com/storage/products/company/brand/logos/jetbrains.svg)](https://jb.gg/OpenSource)
+`TD2sCysnKPi1q4GbQhR3bVZUknamk74A5e`
+
+**Binance ID**
+
+`746947043`
+
+Please verify the network before sending any cryptocurrency.
+
+## Developer
+
+**Ahmed Alhrrani**
+
+Telegram: [@maho_s9](https://t.me/maho_s9)
+
+---
+
+**BY - AHMED ALHRRANI -**
